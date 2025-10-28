@@ -18,7 +18,8 @@ import {
     ComposedChart,
     Area,
     type LegendType,
-    type LegendPayload
+    type LegendPayload,
+    type LegendProps
 } from "recharts";
 import {
     Table,
@@ -86,7 +87,6 @@ export const UnifiedChart = ({
         };
     }, [config.series, allRuns]);
 
-    // chartDataWithBurst
     const chartDataWithBurst = useMemo(() => {
         return data.map((entry) => {
             const isBursting = Object.keys(entry).some(
@@ -162,8 +162,7 @@ export const UnifiedChart = ({
             linePayloads.push({
                 value: "Burst Logging",
                 type: "square",
-                id: "burstHighlight",
-                color: "hsl(var(--destructive))",
+                color: "var(--destructive)",
             });
         }
 
@@ -206,7 +205,7 @@ export const UnifiedChart = ({
             }
             const run = allRuns.find((r) => r.id === runId);
             if (run) {
-                 return `Session ${run.sessionId.slice(-4)}`;
+                return `Session ${run.sessionId.slice(-4)}`;
             }
             return "Unknown";
         };
@@ -221,7 +220,7 @@ export const UnifiedChart = ({
         );
 
         return { headers, rows, runIds: orderedRunIds };
-    }, [clickedPoint, config, allRuns, selectedRunIds]); // Added selectedRunIds
+    }, [clickedPoint, config, allRuns, selectedRunIds]);
 
     return (
         <Card>
@@ -318,7 +317,7 @@ export const UnifiedChart = ({
                                 />
 
                                 {config.series.length > 0 && (
-                                    <Legend payload={customLegendPayload} />
+                                    <Legend content={<CustomLegendRenderer />} />
                                 )}
 
                                 {hasRightAxis && (
@@ -357,7 +356,7 @@ export const UnifiedChart = ({
                                                     ? event.Timestamp
                                                     : event.distance
                                             }
-                                            stroke="hsl(var(--destructive))"
+                                            stroke="var(--destructive)"
                                             strokeDasharray="4 8"
                                             strokeWidth={2}
                                             yAxisId={hasLeftAxis ? "left" : "right"}
@@ -365,17 +364,16 @@ export const UnifiedChart = ({
                                                 value: event.EventName,
                                                 position: "top",
                                                 offset: 5,
-                                                fill: "hsl(var(--destructive))",
+                                                fill: "var(--destructive)",
                                                 fontSize: 14,
                                             }}
                                         />
                                     ))}
 
                                 <Brush
-                                    data={chartDataWithBurst}
                                     dataKey={config.xAxisKey}
                                     height={30}
-                                    stroke="hsl(var(--primary))"
+                                    stroke="var(--chart-brush)"
                                     y={chartHeight - 30}
                                     travellerWidth={10}
                                     startIndex={brushStartIndex}
@@ -395,7 +393,10 @@ export const UnifiedChart = ({
                         <DialogTitle>Data Point Comparison</DialogTitle>
                         <DialogDescription>
                             All metrics at {config.xAxisKey}:{" "}
-                            {clickedPoint?.[config.xAxisKey]?.toFixed(2)}
+                            {/* Check if the value is a number before calling toFixed */}
+                            {typeof clickedPoint?.[config.xAxisKey] === "number"
+                                ? (clickedPoint?.[config.xAxisKey] as number).toFixed(2)
+                                : clickedPoint?.[config.xAxisKey] ?? "N/A" /* Display non-numbers or fallback */}
                         </DialogDescription>
                     </DialogHeader>
                     <div className="flex-1 overflow-auto min-h-0">
@@ -485,7 +486,7 @@ const CustomTooltip = ({ active, payload, label, xAxisLabel }: any) => {
 
                 {hasBurst && (
                     <p
-                        style={{ color: "hsl(var(--destructive))" }}
+                        style={{ color: "var(--destructive)" }}
                         className="font-semibold text-sm"
                     >
                         Burst Logging: true
@@ -540,4 +541,50 @@ const CustomTooltip = ({ active, payload, label, xAxisLabel }: any) => {
         );
     }
     return null;
+};
+
+
+// --- Custom Legend Renderer ---
+// Use a more general type for props if LegendProps is problematic,
+// or directly access payload with a check.
+const CustomLegendRenderer = (props: { payload?: any[] }) => { // More specific type if possible
+    // Destructure payload, provide default empty array
+    const { payload = [] } = props;
+
+    // Optional: Add a check if payload might truly be absent
+    if (!payload || payload.length === 0) {
+        return null;
+    }
+
+    return (
+        <ul style={{ listStyle: 'none', padding: 0, margin: '0 auto', textAlign: 'center', maxWidth: '80%' /* Prevent overflow */ }}>
+            {payload.map((entry, index) => (
+                <li
+                    key={`item-${index}`}
+                    style={{
+                        display: 'inline-block',
+                        marginRight: '15px', // Increased spacing
+                        marginBottom: '5px', // Add bottom margin for wrapping
+                        color: 'var(--foreground)', // Use CSS variable for text color
+                        cursor: 'pointer',
+                        fontSize: '12px',
+                        whiteSpace: 'nowrap', // Prevent wrapping within a single legend item
+                    }}
+                >
+                    <span style={{
+                        display: 'inline-block',
+                        marginRight: '5px',
+                        width: '10px',
+                        height: '10px',
+                        backgroundColor: entry.color, // Color from payload
+                        borderRadius: entry.type === 'line' ? '50%' : '2px', // Circle for line, slight round for square
+                        verticalAlign: 'middle', // Align swatch vertically
+                    }}></span>
+                    <span style={{ verticalAlign: 'middle' }}> {/* Align text vertically */}
+                        {entry.value}
+                    </span>
+                </li>
+            ))}
+        </ul>
+    );
 };

@@ -61,11 +61,22 @@
   --border: oklch(0.92 0.004 286.32);
   --input: oklch(0.92 0.004 286.32);
   --ring: oklch(0.705 0.015 286.067);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
+  --chart-1:  oklch(0.646 0.222 41.116);  /* Existing Orange */
+  --chart-2:  oklch(0.6   0.118 184.704);  /* Existing Cyan */
+  --chart-3:  oklch(0.398 0.07  227.392);  /* Existing Blue */
+  --chart-4:  oklch(0.828 0.189 84.429);   /* Existing Yellow-Green */
+  --chart-5:  oklch(0.769 0.188 70.08);    /* Existing Yellow */
+  --chart-6:  oklch(0.55  0.2   340);     /* Magenta/Pink */
+  --chart-7:  oklch(0.65  0.15  145);     /* Green */
+  --chart-8:  oklch(0.45  0.18  275);     /* Purple */
+  --chart-9:  oklch(0.7   0.1   10);      /* Red */
+  --chart-10: oklch(0.75  0.12  115);     /* Lime Green */
+  --chart-11: oklch(0.5   0.1   200);     /* Sky Blue */
+  --chart-12: oklch(0.6   0.08  300);     /* Lavender */
+  --chart-13: oklch(0.58  0.16  60);      /* Gold */
+  --chart-14: oklch(0.48  0.05  160);     /* Teal */
+  --chart-15: oklch(0.62  0.14  30);      /* Brownish Orange */
+  --chart-16: oklch(0.5   0.09  250);     /* Indigo */
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.141 0.005 285.823);
   --sidebar-primary: oklch(0.21 0.006 285.885);
@@ -74,9 +85,11 @@
   --sidebar-accent-foreground: oklch(0.21 0.006 285.885);
   --sidebar-border: oklch(0.92 0.004 286.32);
   --sidebar-ring: oklch(0.705 0.015 286.067);
+  --chart-brush: oklch(27.442% 0.16526 280.699);
 }
 
 .dark {
+  --chart-brush: oklch(53.492% 0.29346 295.245);
   --background: oklch(0.141 0.005 285.823);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.21 0.006 285.885);
@@ -95,11 +108,22 @@
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.552 0.016 285.938);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
+  --chart-1:  oklch(0.75 0.18  264.376);  /* Adjusted Purple (was chart-1 dark) */
+  --chart-2:  oklch(0.78 0.17  162.48);   /* Existing Teal (was chart-2 dark) */
+  --chart-3:  oklch(0.85 0.188 70.08);    /* Existing Yellow (was chart-3 dark) */
+  --chart-4:  oklch(0.75 0.2   303.9);   /* Adjusted Magenta (was chart-4 dark) */
+  --chart-5:  oklch(0.78 0.2   16.439);   /* Adjusted Orange (was chart-5 dark) */
+  --chart-6:  oklch(0.7   0.18  340);     /* Pink */
+  --chart-7:  oklch(0.8   0.15  145);     /* Light Green */
+  --chart-8:  oklch(0.65  0.18  275);     /* Brighter Purple */
+  --chart-9:  oklch(0.72  0.15  10);      /* Light Red */
+  --chart-10: oklch(0.88  0.12  115);     /* Lime Green */
+  --chart-11: oklch(0.7   0.1   200);     /* Sky Blue */
+  --chart-12: oklch(0.75  0.08  300);     /* Lavender */
+  --chart-13: oklch(0.78  0.16  60);      /* Gold */
+  --chart-14: oklch(0.68  0.08  160);     /* Muted Teal */
+  --chart-15: oklch(0.72  0.14  30);      /* Light Brownish Orange */
+  --chart-16: oklch(0.68  0.12  250);     /* Light Indigo */
   --sidebar: oklch(0.21 0.006 285.885);
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.488 0.243 264.376);
@@ -114,6 +138,7 @@
   * {
     @apply border-border outline-ring/50;
   }
+
   body {
     @apply bg-background text-foreground;
   }

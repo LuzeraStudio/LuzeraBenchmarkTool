@@ -3,7 +3,7 @@ import Papa from "papaparse";
 import type {
   BenchmarkSession,
   BenchmarkRun,
-  Event,
+  BenchmarkEvent,
   PerformanceLogEntry,
   StaticData,
   AvailableMetric,
@@ -83,7 +83,7 @@ self.onmessage = async (
     maps: {},
   };
 
-  const tempEvents: { mapName: string | null; events: Event[] }[] = [];
+  const tempEvents: { mapName: string | null; events: BenchmarkEvent[] }[] = [];
 
   const processingErrors: { file: string; error: string }[] = [];
   let filesProcessedCount = 0;
@@ -122,7 +122,7 @@ self.onmessage = async (
       } else if (fileNameLower.includes("events")) {
         const match = fileName.match(/^(.+?)-Events\.csv$/i);
         const mapName = match ? match[1] : null;
-        const parsedEvents = parseCSV<Event>(content);
+        const parsedEvents = parseCSV<BenchmarkEvent>(content);
         filesProcessedCount++;
 
         tempEvents.push({ mapName, events: parsedEvents });

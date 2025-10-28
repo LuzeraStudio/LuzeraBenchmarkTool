@@ -1,7 +1,7 @@
 // All data is row-oriented as it comes from the parser worker
 export type PerformanceLogEntry = Record<string, number | string | boolean>;
 export type StaticData = Record<string, string>;
-export type Event = Record<string, any>; // Keep flexible
+export type BenchmarkEvent = Record<string, any>; // Keep flexible
 
 /**
  * A single benchmark run, typically from one log file.
@@ -12,7 +12,7 @@ export interface BenchmarkRun {
   sessionId: string; // ID of the session this run belongs to
   name: string; // Display name
   performanceLogs: PerformanceLogEntry[];
-  events: Event[];
+  events: BenchmarkEvent[];
   // This will hold all column headers found in the performance log
   availableMetrics: AvailableMetric[];
 }
@@ -59,7 +59,7 @@ export interface ChartConfig {
   xAxisKey: ChartAxisKey;
   series: ChartSeriesConfig[];
   // We need to map events to their original run for consistency
-  events: (Event & { runId: string; distance: number })[];
+  events: (BenchmarkEvent & { runId: string; distance: number })[];
 }
 
 /**

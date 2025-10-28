@@ -6,6 +6,7 @@ import type {
     ChartAxisKey,
     Preset,
     PerformanceLogEntry,
+    BenchmarkEvent,
 } from "@/types/benchmark";
 import { UnifiedChart } from "@/components/UnifiedChart";
 import { useToast } from "@/hooks/use-toast";
@@ -66,16 +67,22 @@ interface ChartControllerProps {
 
 // --- Constants ---
 const CHART_COLORS = [
-    "hsl(var(--chart-1))",
-    "hsl(var(--chart-2))",
-    "hsl(var(--chart-3))",
-    "hsl(var(--chart-4))",
-    "hsl(var(--chart-5))",
-    "hsl(var(--chart-6))",
-    "hsl(var(--chart-7))",
-    "hsl(var(--chart-8))",
-    "hsl(var(--chart-9))",
-    "hsl(var(--chart-10))",
+    "var(--chart-1)",
+    "var(--chart-2)",
+    "var(--chart-3)",
+    "var(--chart-4)",
+    "var(--chart-5)",
+    "var(--chart-6)",
+    "var(--chart-7)",
+    "var(--chart-8)",
+    "var(--chart-9)",
+    "var(--chart-10)",
+    "var(--chart-11)",
+    "var(--chart-12)",
+    "var(--chart-13)",
+    "var(--chart-14)",
+    "var(--chart-15)",
+    "var(--chart-16)",
 ];
 const PRESETS_KEY = "benchmark-presets-v2";
 const COLOR_OVERRIDES_KEY = "benchmark-color-overrides-v2";
@@ -140,7 +147,7 @@ const downsampleData = (
             x: entry[xAxisKey] as number,
             y: (entry[firstMetricKey] || 0) as number,
         }));
-        return LTTB(lttbFormattedData, threshold);
+        return LTTB(lttbFormattedData, threshold) as unknown as PerformanceLogEntry[];
     } catch (e) {
         console.error("LTTB Downsampling failed:", e);
         const factor = Math.ceil(data.length / threshold);
@@ -277,10 +284,12 @@ export const ChartController = ({
         setPresets(newPresets);
         localStorage.setItem(PRESETS_KEY, JSON.stringify(newPresets));
     };
+
     const saveColorOverrides = (newOverrides: Record<string, string>) => {
         setColorOverrides(newOverrides);
         localStorage.setItem(COLOR_OVERRIDES_KEY, JSON.stringify(newOverrides));
     };
+
     const getMetricColor = useCallback(
         (metricKey: string): string => {
             if (colorOverrides[metricKey]) return colorOverrides[metricKey];
@@ -294,25 +303,30 @@ export const ChartController = ({
     const handleColorChange = (metricKey: string, color: string) => {
         saveColorOverrides({ ...colorOverrides, [metricKey]: color });
     };
+
     const triggerColorInput = (metricKey: string) => {
         if (colorInputRef.current) {
             colorInputRef.current.dataset.metricKey = metricKey;
             colorInputRef.current.click();
         }
     };
+
     const toggleMetric = (key: string) => {
         const newSet = new Set(selectedMetrics);
         newSet.has(key) ? newSet.delete(key) : newSet.add(key);
         setSelectedMetrics(newSet);
     };
+
     const toggleSession = (sessionId: string) => {
         const newSet = new Set(selectedSessionIds);
         newSet.has(sessionId) ? newSet.delete(sessionId) : newSet.add(sessionId);
         setSelectedSessionIds(newSet);
     };
+
     const handleDeleteSession = (sessionId: string) => {
         deleteSession(sessionId);
     };
+
     const loadPreset = (preset: Preset) => {
         const validMetrics = preset.metrics.filter((m) =>
             allAvailableMetrics.some((am) => am.key === m),
@@ -320,6 +334,7 @@ export const ChartController = ({
         setSelectedMetrics(new Set(validMetrics));
         toast({ title: "Preset loaded", description: `Loaded "${preset.name}"` });
     };
+
     const saveNewPreset = () => {
         if (!newPresetName.trim()) {
             toast({
@@ -348,6 +363,7 @@ export const ChartController = ({
             description: `"${newPreset.name}" has been saved`,
         });
     };
+
     const deletePreset = (presetName: string) => {
         savePresets(presets.filter((p) => p.name !== presetName));
         toast({ title: "Preset deleted", description: `"${presetName}" removed.` });
@@ -356,7 +372,7 @@ export const ChartController = ({
     // --- Chart Config ---
     const chartConfig = useMemo((): ChartConfig => {
         const series: ChartConfig["series"] = [];
-        const allEvents: (Event & { runId: string; distance: number })[] = [];
+        const allEvents: (BenchmarkEvent & { runId: string; distance: number })[] = [];
         const activeRuns = runs.filter((run) => selectedRunIds.has(run.id));
 
         activeRuns.forEach((run) => {
@@ -390,19 +406,33 @@ export const ChartController = ({
 
             // Process Events
             const runFullData = run.performanceLogs;
-            const events = run.events.map((event) => {
-                const closestEntry = runFullData.reduce((prev, curr) => {
-                    return Math.abs(curr.TIMESTAMP - event.Timestamp) <
-                        Math.abs(prev.TIMESTAMP - event.Timestamp)
-                        ? curr
-                        : prev;
-                });
-                return {
-                    ...event,
-                    runId: run.id,
-                    distance: closestEntry["SPLINE.DISTANCE"] as number,
-                };
-            });
+            // Check if runFullData is usable before mapping events
+            const events = (runFullData && runFullData.length > 0 && run.events)
+                ? run.events.map((event) => {
+                    // Ensure event.Timestamp exists and provide a fallback number (e.g., 0)
+                    const eventTimestamp = (event.Timestamp as number) ?? 0;
+
+                    const closestEntry = runFullData.reduce((prev, curr) => {
+                        // Assert prev and curr TIMESTAMPS as numbers, provide fallbacks
+                        const prevTs = (prev?.TIMESTAMP as number) ?? Infinity;
+                        const currTs = (curr?.TIMESTAMP as number) ?? Infinity;
+
+                        // Perform the comparison using the guaranteed numbers
+                        return Math.abs(currTs - eventTimestamp) <
+                            Math.abs(prevTs - eventTimestamp)
+                            ? curr
+                            : prev;
+                    }, runFullData[0]); // Provide initial value for reduce
+
+                    return {
+                        ...event,
+                        runId: run.id,
+                        // Safely access SPLINE.DISTANCE with optional chaining and fallback
+                        distance: (closestEntry?.["SPLINE.DISTANCE"] as number) ?? 0,
+                    };
+                })
+                : []; // Return an empty array if runFullData or events are missing
+
             allEvents.push(...events);
         });
 
