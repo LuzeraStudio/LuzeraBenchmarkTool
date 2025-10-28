@@ -39,10 +39,8 @@ import {
     TooltipTrigger,
 } from "@/components/ui/tooltip";
 import {
-    Settings,
     Save,
     Check,
-    ChevronsUpDown,
     ZoomIn,
     ZoomOut,
     Download,

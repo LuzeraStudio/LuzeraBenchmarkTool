@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import { useDropzone } from "react-dropzone";
-import { UploadCloud, File as FileIcon, Folder } from "lucide-react"; // Import Folder icon
+import { UploadCloud, Folder } from "lucide-react"; // Import Folder icon
 import { cn } from "@/lib/utils";
 import { Button } from "./ui/button";
 import { useBenchmarkData } from "@/contexts/BenchmarkContext"; // Import context hook

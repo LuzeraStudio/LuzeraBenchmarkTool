@@ -19,7 +19,6 @@ import {
     Area,
     type LegendType,
     type LegendPayload,
-    type LegendProps
 } from "recharts";
 import {
     Table,
@@ -143,31 +142,6 @@ export const UnifiedChart = ({
         setClickedPoint(mergedPoint);
         setIsPointDialogOpen(true);
     };
-
-    const customLegendPayload = useMemo((): LegendPayload[] => {
-        const linePayloads: LegendPayload[] = config.series.map((series) => ({
-            value: series.name,
-            type: "line" as LegendType,
-            id: series.dataKey,
-            color: series.color,
-        }));
-
-        const hasBurstData = allRuns.some(
-            (run) =>
-                run.performanceLogs.length > 0 &&
-                run.performanceLogs[0]["BURST_LOGGING_STATUS"] !== undefined,
-        );
-
-        if (hasBurstData && hasRightAxis) {
-            linePayloads.push({
-                value: "Burst Logging",
-                type: "square",
-                color: "var(--destructive)",
-            });
-        }
-
-        return linePayloads;
-    }, [config.series, allRuns, hasRightAxis]);
 
     const comparisonData = useMemo(() => {
         if (!clickedPoint) {
