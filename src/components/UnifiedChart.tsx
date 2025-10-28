@@ -16,9 +16,7 @@ import {
     ReferenceLine,
     Brush,
     ComposedChart,
-    Area,
-    type LegendType,
-    type LegendPayload,
+    Area
 } from "recharts";
 import {
     Table,
@@ -196,10 +194,17 @@ export const UnifiedChart = ({
         return { headers, rows, runIds: orderedRunIds };
     }, [clickedPoint, config, allRuns, selectedRunIds]);
 
+    // Define heights for elements
+    const brushHeight = 30;
+    const legendHeightEstimate = 40;
+    const bottomSpacing = 5;
+    const totalBottomMargin = brushHeight;
+    const brushYPosition = chartHeight - brushHeight - legendHeightEstimate - bottomSpacing;
+
     return (
-        <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
-                <CardTitle className="text-lg sm:text-xl">{title}</CardTitle>
+        <Card className="gap-2">
+            <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-0 mb-0">
+                <CardTitle className="w-full text-center text-lg sm:text-xl">{title}</CardTitle>
             </CardHeader>
             <CardContent>
                 {chartDataWithBurst.length === 0 ? (
@@ -215,7 +220,7 @@ export const UnifiedChart = ({
                             <ComposedChart
                                 data={chartDataWithBurst}
                                 onClick={handleChartClick}
-                                margin={{ top: 30, right: 20, left: 0, bottom: 35 }}
+                                margin={{ top: 30, right: 20, left: 0, bottom: totalBottomMargin }}
                                 syncId={syncId}
                             >
                                 <CartesianGrid
@@ -290,8 +295,27 @@ export const UnifiedChart = ({
                                     isAnimationActive={false}
                                 />
 
+                                <Brush
+                                    dataKey={config.xAxisKey}
+                                    height={brushHeight}
+                                    stroke="var(--chart-brush)"
+                                    y={brushYPosition}
+                                    travellerWidth={10}
+                                    startIndex={brushStartIndex}
+                                    endIndex={brushEndIndex}
+                                    onChange={onBrushChange}
+                                />
+
                                 {config.series.length > 0 && (
-                                    <Legend content={<CustomLegendRenderer />} />
+                                    <Legend content={<CustomLegendRenderer />}
+                                        
+                                        wrapperStyle={{
+                                            position: 'relative', // Use relative to allow normal flow within its allocated space
+                                            width: '100%',         // Take full width
+                                            bottom: 0, // Align to the absolute bottom of the container space
+                                            //paddingTop: '5px' // Optional: Small space between Brush and Legend if needed
+                                        }}
+                                    />
                                 )}
 
                                 {hasRightAxis && (
@@ -343,17 +367,6 @@ export const UnifiedChart = ({
                                             }}
                                         />
                                     ))}
-
-                                <Brush
-                                    dataKey={config.xAxisKey}
-                                    height={30}
-                                    stroke="var(--chart-brush)"
-                                    y={chartHeight - 30}
-                                    travellerWidth={10}
-                                    startIndex={brushStartIndex}
-                                    endIndex={brushEndIndex}
-                                    onChange={onBrushChange}
-                                />
                             </ComposedChart>
                         </ResponsiveContainer>
                     </div>
@@ -521,44 +534,94 @@ const CustomTooltip = ({ active, payload, label, xAxisLabel }: any) => {
 // --- Custom Legend Renderer ---
 // Use a more general type for props if LegendProps is problematic,
 // or directly access payload with a check.
-const CustomLegendRenderer = (props: { payload?: any[] }) => { // More specific type if possible
-    // Destructure payload, provide default empty array
+const CustomLegendRenderer = (props: { payload?: any[] }) => {
     const { payload = [] } = props;
 
-    // Optional: Add a check if payload might truly be absent
     if (!payload || payload.length === 0) {
         return null;
     }
 
+    // Map to store unique metrics and their details
+    const uniqueMetrics = new Map<string, { value: string; color: string; type: string }>();
+
+    payload.forEach(entry => {
+        // Extract metric name (part after " - ")
+        const valueStr = String(entry.value ?? '');
+        const parts = valueStr.split(" - ");
+        // Use the full name if no " - ", otherwise take the part after
+        const metricName = parts.length > 1 ? parts.slice(1).join(" - ") : valueStr;
+
+        // If this metric name hasn't been seen yet, add it to the map
+        if (!uniqueMetrics.has(metricName) && metricName !== "Burst Logging") { // Exclude Burst Logging here if it's handled separately or has its own logic
+            uniqueMetrics.set(metricName, {
+                value: metricName, // Store the clean metric name
+                color: entry.color, // Store its color
+                type: entry.type    // Store its type (line, square, etc.)
+            });
+        }
+    });
+
+    // Special handling for Burst Logging if present in payload
+    const burstLoggingEntry = payload.find(entry => entry.value === "Burst Logging");
+
     return (
-        <ul style={{ listStyle: 'none', padding: 0, margin: '0 auto', textAlign: 'center', maxWidth: '80%' /* Prevent overflow */ }}>
-            {payload.map((entry, index) => (
+        <ul style={{ listStyle: 'none', padding: 0, margin: '0 auto', textAlign: 'center', maxWidth: '90%' }}>
+            {/* Render unique metrics */}
+            {Array.from(uniqueMetrics.values()).map((entry, index) => (
                 <li
                     key={`item-${index}`}
                     style={{
                         display: 'inline-block',
-                        marginRight: '15px', // Increased spacing
-                        marginBottom: '5px', // Add bottom margin for wrapping
-                        color: 'var(--foreground)', // Use CSS variable for text color
+                        marginRight: '15px',
+                        marginBottom: '5px',
+                        color: 'var(--foreground)',
                         cursor: 'pointer',
                         fontSize: '12px',
-                        whiteSpace: 'nowrap', // Prevent wrapping within a single legend item
+                        whiteSpace: 'nowrap',
                     }}
                 >
                     <span style={{
                         display: 'inline-block',
-                        marginRight: '5px',
+                        marginRight: '6px',
                         width: '10px',
                         height: '10px',
-                        backgroundColor: entry.color, // Color from payload
-                        borderRadius: entry.type === 'line' ? '50%' : '2px', // Circle for line, slight round for square
-                        verticalAlign: 'middle', // Align swatch vertically
+                        backgroundColor: entry.color,
+                        borderRadius: entry.type === 'line' ? '50%' : '2px',
+                        verticalAlign: 'middle',
                     }}></span>
-                    <span style={{ verticalAlign: 'middle' }}> {/* Align text vertically */}
-                        {entry.value}
+                    <span style={{ verticalAlign: 'middle' }}>
+                        {entry.value} {/* Display unique metric name */}
                     </span>
                 </li>
             ))}
+            {/* Render Burst Logging separately if it exists */}
+            {burstLoggingEntry && (
+                <li
+                    key="burst-logging"
+                    style={{
+                        display: 'inline-block',
+                        marginRight: '15px',
+                        marginBottom: '5px',
+                        color: 'var(--foreground)',
+                        cursor: 'pointer',
+                        fontSize: '12px',
+                        whiteSpace: 'nowrap',
+                    }}
+                >
+                    <span style={{
+                        display: 'inline-block',
+                        marginRight: '6px',
+                        width: '10px',
+                        height: '10px',
+                        backgroundColor: 'red',
+                        borderRadius: '2px', // Square
+                        verticalAlign: 'middle',
+                    }}></span>
+                    <span style={{ verticalAlign: 'middle', textTransform: 'uppercase' }}>
+                        {burstLoggingEntry.value}
+                    </span>
+                </li>
+            )}
         </ul>
     );
 };
