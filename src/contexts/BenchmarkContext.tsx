@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
-import type { BenchmarkSession, StaticData } from "../types/benchmark";
+import type { BenchmarkSession } from "../types/benchmark";
 import { useToast } from "@/hooks/use-toast";
 
 interface BenchmarkDataContextType {
@@ -44,8 +44,7 @@ export const BenchmarkDataProvider = ({
     }
 
     worker.onmessage = (e) => {
-      const { benchmarkSession, filesProcessedCount, totalFiles, errors } =
-        e.data;
+      const { benchmarkSession, filesProcessedCount, errors } = e.data;
 
       setSessions((prevSessions) => [...prevSessions, benchmarkSession]);
       setIsLoading(false);
