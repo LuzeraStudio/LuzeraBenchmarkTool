@@ -350,6 +350,7 @@ export const ChartJsChart = forwardRef<ChartJsChartHandle, ChartJsChartProps>(({
                 metricTd.style.textAlign = 'left';
                 metricTd.style.fontWeight = '600';
                 metricTd.style.paddingRight = '0.5rem';
+                metricTd.style.whiteSpace = 'nowrap';
                 dataRow.appendChild(metricTd);
 
                 orderedSessionNames.forEach(sessionName => {

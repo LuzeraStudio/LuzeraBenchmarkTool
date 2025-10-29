@@ -283,6 +283,11 @@ export const ChartController = ({
         return Array.from(sessionMap.values()).sort((a, b) => a.name.localeCompare(b.name)); // Sort sessions
     }, [runs, sessionNameMap]);
 
+    // --- Track previously available sessions ---
+    const prevAvailableSessionIdsRef = useRef<Set<string>>(
+        new Set(uniqueSessionsInRuns.map(s => s.id))
+    );
+
     const selectedMetricMetas = useMemo(() => {
         return allAvailableMetrics
             .filter(m => selectedMetrics.has(m.key))
@@ -360,31 +365,46 @@ export const ChartController = ({
         }
     }, [uniqueSessionsInRuns, selectedSessionIds.size, setSelectedSessionIds, isInitialSessionLoadDone, setIsInitialSessionLoadDone]);
 
-    // Effect 2: Synchronize selected sessions - remove invalid ones if runs change
+    // Effect 2: Synchronize selected sessions - remove invalid ones AND add new ones
     useEffect(() => {
+        // Don't run this logic until the initial load is complete
+        if (!isInitialSessionLoadDone) return;
+
         const availableSessionIds = new Set(uniqueSessionsInRuns.map((s) => s.id));
         const currentSessionIds = new Set(selectedSessionIds);
+        const prevAvailableSessionIds = prevAvailableSessionIdsRef.current;
+
+        let newSelectedIds = new Set(currentSessionIds);
         let changed = false;
 
-
-        // Check if any currently selected session is no longer available
-        const validSelectedIds = new Set<string>();
+        // 1. Remove invalid sessions (e.g., deleted ones)
+        // An invalid session is one in currentSessionIds but NOT in availableSessionIds
         for (const id of currentSessionIds) {
-            if (availableSessionIds.has(id)) {
-                validSelectedIds.add(id);
-            } else {
-                changed = true; // Mark that an invalid ID was found
+            if (!availableSessionIds.has(id)) {
+                newSelectedIds.delete(id);
+                changed = true;
             }
         }
 
-        // If an invalid ID was removed, update the context state
-        if (changed) {
-            setSelectedSessionIds(validSelectedIds);
+        // 2. Add new sessions
+        // A new session is one in availableSessionIds but NOT in prevAvailableSessionIds
+        for (const id of availableSessionIds) {
+            if (!prevAvailableSessionIds.has(id)) {
+                newSelectedIds.add(id);
+                changed = true;
+            }
         }
-        // DO NOT automatically re-select all if validSelectedIds becomes empty here.
-        // Let the user control the empty state via toggleSession.
 
-    }, [uniqueSessionsInRuns, selectedSessionIds, setSelectedSessionIds]); // Rerun if available runs or selection changes
+        // 3. Update the ref for the next render
+        // We must do this *outside* the `if(changed)` block to track the new state
+        prevAvailableSessionIdsRef.current = availableSessionIds;
+
+        // 4. If anything changed, update the context state
+        if (changed) {
+            setSelectedSessionIds(newSelectedIds);
+        }
+
+    }, [uniqueSessionsInRuns, selectedSessionIds, setSelectedSessionIds, isInitialSessionLoadDone]); // Rerun if available runs or selection changes
 
     // Update selectedRunIds based on selectedSessionIds
     const selectedRunIds = useMemo(() => {

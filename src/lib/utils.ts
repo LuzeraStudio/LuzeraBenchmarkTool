@@ -13,7 +13,6 @@ export const findClosestIndexBinary = (
     targetValue: number,
     key: ChartAxisKey | "TIMESTAMP", // Allow finding by TIMESTAMP for events
 ): number => {
-    // ... (Copy the binary search implementation from the worker) ...
     let low = 0;
     let high = sortedLogs.length - 1;
     let closestIndex = 0;
