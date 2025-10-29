@@ -80,6 +80,7 @@ import {
     DialogTitle,
 } from "@/components/ui/dialog";
 import { useChartSettings, MIN_CHART_HEIGHT, MAX_CHART_HEIGHT, HEIGHT_STEP } from "@/contexts/ChartSettingsContext";
+import { useTheme } from "@/contexts/ThemeContext";
 
 // --- Worker Message Types (Using Updated Worker Output) ---
 interface ChartJsWorkerDataset {
@@ -96,22 +97,22 @@ type ChartWorkerMessage = ChartDataResultMessage | ErrorResultMessage;
 
 // --- Constants ---
 const CHART_COLORS = [
-    "var(--chart-1)",
-    "var(--chart-2)",
-    "var(--chart-3)",
-    "var(--chart-4)",
-    "var(--chart-5)",
-    "var(--chart-6)",
-    "var(--chart-7)",
-    "var(--chart-8)",
-    "var(--chart-9)",
-    "var(--chart-10)",
-    "var(--chart-11)",
-    "var(--chart-12)",
-    "var(--chart-13)",
-    "var(--chart-14)",
-    "var(--chart-15)",
-    "var(--chart-16)",
+    ("var(--chart-1)"),
+    ("var(--chart-2)"),
+    ("var(--chart-3)"),
+    ("var(--chart-4)"),
+    ("var(--chart-5)"),
+    ("var(--chart-6)"),
+    ("var(--chart-7)"),
+    ("var(--chart-8)"),
+    ("var(--chart-9)"),
+    ("var(--chart-10)"),
+    ("var(--chart-11)"),
+    ("var(--chart-12)"),
+    ("var(--chart-13)"),
+    ("var(--chart-14)"),
+    ("var(--chart-15)"),
+    ("var(--chart-16)"),
 ];
 const PRESETS_KEY = "benchmark-presets-v2";
 const COLOR_OVERRIDES_KEY = "benchmark-color-overrides-v2";
@@ -165,11 +166,23 @@ export const ChartController = ({
     // selectedMap,
     // onMapChange,
 }: ChartControllerProps) => {
+    const { theme } = useTheme();
     const { toast } = useToast();
     const { sessions, deleteSession } = useBenchmarkData();
     const { selectedMap, selectedMetrics, xAxisKey, setSelectedMap, setSelectedMetrics,
         setXAxisKey, selectedSessionIds, setSelectedSessionIds, isInitialSessionLoadDone,
         setIsInitialSessionLoadDone, chartHeight, setChartHeight } = useChartSettings();
+
+    const [debouncedTheme, setDebouncedTheme] = useState(theme);
+
+    useEffect(() => {
+        // This effect runs *after* the DOM update from ThemeProvider.
+        const timer = setTimeout(() => {
+            setDebouncedTheme(theme);
+        }, 0);
+
+        return () => clearTimeout(timer); // Cleanup
+    }, [theme]); // Run *only* when the theme string changes
 
     // --- Worker State ---
     const chartWorkerRef = useRef<Worker | null>(null);
@@ -505,7 +518,7 @@ export const ChartController = ({
         });
 
         return { finalLabels: labels, finalDatasets, yAxesConfig };
-    }, [processedChartData.labels, processedChartData.datasets, runs, selectedRunIds, selectedMetrics, sessionNameMap, allAvailableMetrics, getMetricColor]);
+    }, [processedChartData.labels, processedChartData.datasets, runs, selectedRunIds, selectedMetrics, sessionNameMap, allAvailableMetrics, getMetricColor, debouncedTheme]);
 
 
     // --- Prepare Annotations for Chart.js ---
@@ -651,7 +664,7 @@ export const ChartController = ({
         });
 
         return { eventAnnotations: events, burstAnnotations: bursts };
-    }, [processedChartData.fullDataForDetails, runs, selectedRunIds, xAxisKey, chartJsDisplayData.yAxesConfig]);
+    }, [processedChartData.fullDataForDetails, runs, selectedRunIds, xAxisKey, chartJsDisplayData.yAxesConfig, debouncedTheme]);
 
 
     // --- Click Handler Callback ---
@@ -726,7 +739,7 @@ export const ChartController = ({
         } else {
             toast({ title: "Error", description: "Could not find chart canvas element.", variant: "destructive" });
         }
-    }, [runs, selectedRunIds, toast]);
+    }, [runs, selectedRunIds, toast, debouncedTheme]);
 
     // --- Chart Title Logic ---
     const activeSessionNames = Array.from(selectedSessionIds)
@@ -745,7 +758,7 @@ export const ChartController = ({
 
             <TooltipProvider delayDuration={100}>
                 {/* Controls Bar */}
-                <div className="flex flex-wrap items-center justify-between gap-2 p-2 rounded-lg bg-card border sticky top-[73px] z-20"> {/* Made controls sticky */}
+                <div className="flex flex-wrap items-start justify-between gap-2 p-2 rounded-lg bg-card border sticky top-[73px] z-20"> {/* Made controls sticky */}
                     {/* Left Side: Map and Sessions */}
                     <div className="flex flex-wrap gap-2">
                         <Select value={selectedMap} onValueChange={setSelectedMap} disabled={mapNames.length <= 1}>
@@ -935,7 +948,7 @@ export const ChartController = ({
                             fullDataForDetails={processedChartData.fullDataForDetails}
                         />
                     ) : (
-                        <div style={{ height: `${chartHeight}px` }} className="flex items-center justify-center border-2 border-dashed rounded-lg mt-4">
+                        <div style={{ height: `${chartHeight}px` }} className="flex w-full items-center justify-center border-2 border-dashed rounded-lg mt-4">
                             <p className="text-muted-foreground text-sm">
                                 {isChartLoading ? "Loading chart data..." : (selectedRunIds.size === 0 || selectedMetrics.size === 0) ? "Select sessions and stats to display." : "No data available for the current selection."}
                             </p>

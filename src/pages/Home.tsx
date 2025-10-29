@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useMemo, useEffect } from "react";
 import { FileUploader } from "@/components/FileUploader";
 import { SystemInfo } from "@/components/SystemInfo";
 import { ThemeToggle } from "@/components/ThemeToggle";

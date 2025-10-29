@@ -66,3 +66,55 @@ export const findClosestIndexBinary = (
 
     return closestIndex;
 };
+
+
+// --- Helper Functions ---
+
+// Function to find closest data point index based on X value in a sorted array
+export const findClosestDataIndexBinarySearch = (
+  sortedXValues: number[], // Array must be sorted numerically
+  targetXValue: number
+): number => {
+  let low = 0;
+  let high = sortedXValues.length - 1;
+  let closestIndex = 0;
+  let minDiff = Infinity;
+
+  if (sortedXValues.length === 0) return -1; // Handle empty array
+
+  // Handle edge cases: targetValue is outside the array range
+  if (targetXValue <= sortedXValues[low]) return low;
+  if (targetXValue >= sortedXValues[high]) return high;
+
+  while (low <= high) {
+    const mid = Math.floor((low + high) / 2);
+    const midValue = sortedXValues[mid];
+    const diff = Math.abs(midValue - targetXValue);
+
+    if (diff < minDiff) {
+      minDiff = diff;
+      closestIndex = mid;
+    }
+
+    if (midValue < targetXValue) {
+      low = mid + 1;
+    } else if (midValue > targetXValue) {
+      high = mid - 1;
+    } else {
+      // Exact match found
+      return mid;
+    }
+  }
+
+  // After the loop, check neighbors of closestIndex found during search,
+  // as binary search might land between the two closest points.
+  if (closestIndex > 0 && Math.abs(sortedXValues[closestIndex - 1] - targetXValue) < minDiff) {
+    closestIndex = closestIndex - 1;
+    minDiff = Math.abs(sortedXValues[closestIndex] - targetXValue); // Re-calculate minDiff is important
+  }
+  if (closestIndex < sortedXValues.length - 1 && Math.abs(sortedXValues[closestIndex + 1] - targetXValue) < minDiff) {
+    closestIndex = closestIndex + 1;
+  }
+
+  return closestIndex;
+};
