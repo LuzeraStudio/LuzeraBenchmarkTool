@@ -1,5 +1,5 @@
 // src/components/ChartJsChart.tsx
-import React, { useRef, useEffect, useMemo, useState } from "react";
+import React, { useRef, useEffect, useMemo, useState, useImperativeHandle, forwardRef } from "react";
 import { Line } from "react-chartjs-2";
 import {
   Chart as ChartJS,
@@ -109,9 +109,12 @@ const getOrCreateTooltip = (chart: ChartJS) => {
   return tooltipEl as HTMLDivElement;
 };
 
+export interface ChartJsChartHandle {
+  resetZoom: () => void;
+}
 
 // --- Chart Component ---
-export const ChartJsChart: React.FC<ChartJsChartProps> = ({
+export const ChartJsChart = forwardRef<ChartJsChartHandle, ChartJsChartProps>(({
   datasets,
   labels,
   xAxisKey,
@@ -122,11 +125,17 @@ export const ChartJsChart: React.FC<ChartJsChartProps> = ({
   onPointClick,
   fullDataForDetails,
   hiddenDatasetLabels
-}) => {
+}, ref) => {
   const chartRef = useRef<ChartJS<"line", (number | Point | null)[], number | string> | null>(null);
   const { theme } = useTheme(); // Get current theme
 
   const [debouncedTheme, setDebouncedTheme] = useState(theme);
+
+  useImperativeHandle(ref, () => ({
+    resetZoom: () => {
+      chartRef.current?.resetZoom();
+    }
+  }));
 
   useEffect(() => {
     // This effect runs *after* the DOM update from ThemeProvider.
@@ -152,6 +161,9 @@ export const ChartJsChart: React.FC<ChartJsChartProps> = ({
 
   // Define chart options, including zoom, tooltip, annotations, axes
   const options: ChartOptions<"line"> = useMemo(() => {
+
+    const xMax = labels.length > 0 ? (labels[labels.length - 1] as number) : undefined;
+
     return {
       maintainAspectRatio: false,
       responsive: true,
@@ -165,13 +177,14 @@ export const ChartJsChart: React.FC<ChartJsChartProps> = ({
       },
       scales: {
         x: {
+          max: xMax,
           type: 'linear',
           position: 'bottom',
           title: {
             display: true,
             text: xAxisKey === "TIMESTAMP" ? "Time (s)" : "Distance",
             color: titleColor,
-            align: 'start'
+            align: 'center',
           },
           grid: {
             color: gridColor,
@@ -525,7 +538,8 @@ export const ChartJsChart: React.FC<ChartJsChartProps> = ({
     burstAnnotations,
     onPointClick,
     fullDataForDetails,
-    debouncedTheme
+    debouncedTheme,
+    labels
   ]);
 
   useEffect(() => {
@@ -565,4 +579,4 @@ export const ChartJsChart: React.FC<ChartJsChartProps> = ({
       <Line key={xAxisKey + datasets.length} ref={chartRef} options={options} data={chartData} />
     </div>
   );
-};
+});

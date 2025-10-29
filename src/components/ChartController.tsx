@@ -7,7 +7,7 @@ import {
     useCallback,
 } from "react";
 // --- Chart.js Imports ---
-import { ChartJsChart } from "./ChartJsChart";
+import { ChartJsChart, type ChartJsChartHandle } from "./ChartJsChart";
 import type { ChartData, Point } from 'chart.js';
 import type { AnnotationOptions } from 'chartjs-plugin-annotation';
 // --- Other Imports ---
@@ -62,6 +62,7 @@ import {
     MapPin,
     Eye,
     EyeOff,
+    StretchVertical
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useBenchmarkData } from "@/contexts/BenchmarkContext";
@@ -83,6 +84,8 @@ import {
 } from "@/components/ui/dialog";
 import { useChartSettings, MIN_CHART_HEIGHT, MAX_CHART_HEIGHT, HEIGHT_STEP } from "@/contexts/ChartSettingsContext";
 import { useTheme } from "@/contexts/ThemeContext";
+import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
+import React from "react";
 
 // --- Worker Message Types (Using Updated Worker Output) ---
 interface ChartJsWorkerDataset {
@@ -176,6 +179,7 @@ export const ChartController = ({
         setIsInitialSessionLoadDone, chartHeight, setChartHeight } = useChartSettings();
     const [hiddenDatasetLabels, setHiddenDatasetLabels] = useState(new Set<string>());
     const [debouncedTheme, setDebouncedTheme] = useState(theme);
+    const chartComponentRef = useRef<ChartJsChartHandle>(null);
 
     const handleShowAll = () => {
         setHiddenDatasetLabels(new Set());
@@ -223,6 +227,31 @@ export const ChartController = ({
                 newSet.delete(datasetLabel);
             } else {
                 newSet.add(datasetLabel);
+            }
+            return newSet;
+        });
+    };
+
+    const handleSessionHeaderToggle = (sessionId: string) => {
+        const session = selectedSessionMetas.find(s => s.id === sessionId);
+        if (!session) return; // Safety check
+
+        const sessionName = session.name;
+        const targetLabels = selectedMetricMetas.map(
+            metric => `${sessionName} - ${metric.label}`
+        );
+
+        // Check if ALL are already hidden
+        const allHidden = targetLabels.every(label => hiddenDatasetLabels.has(label));
+
+        setHiddenDatasetLabels(prev => {
+            const newSet = new Set(prev);
+            if (allHidden) {
+                // Show all: remove them from the set
+                targetLabels.forEach(label => newSet.delete(label));
+            } else {
+                // Hide all: add them to the set
+                targetLabels.forEach(label => newSet.add(label));
             }
             return newSet;
         });
@@ -891,6 +920,14 @@ export const ChartController = ({
                             </Tooltip>
                             <Tooltip>
                                 <TooltipTrigger asChild>
+                                    <Button variant="outline" size="sm" onClick={() => chartComponentRef.current?.resetZoom()} className="rounded-none h-9 border-l-0">
+                                        <StretchVertical className="h-4 w-4" />
+                                    </Button>
+                                </TooltipTrigger>
+                                <TooltipContent><p>Reset Horizontal Zoom</p></TooltipContent>
+                            </Tooltip>
+                            <Tooltip>
+                                <TooltipTrigger asChild>
                                     <Button variant="outline" size="sm" onClick={() => setChartHeight(h => Math.min(MAX_CHART_HEIGHT, h + HEIGHT_STEP))} disabled={chartHeight >= MAX_CHART_HEIGHT} className="rounded-l-none h-9 border-l-0">
                                         <ZoomIn className="h-4 w-4" />
                                     </Button>
@@ -1000,6 +1037,7 @@ export const ChartController = ({
                     {/* Chart */}
                     {chartJsDisplayData.finalLabels.length > 0 && chartJsDisplayData.finalDatasets.length > 0 ? (
                         <><ChartJsChart
+                            ref={chartComponentRef}
                             key={selectedMap + xAxisKey + Array.from(selectedSessionIds).join('-')} // Force re-mount on major changes
                             chartTitle={chartTitle}
                             datasets={chartJsDisplayData.finalDatasets}
@@ -1013,101 +1051,134 @@ export const ChartController = ({
                             fullDataForDetails={processedChartData.fullDataForDetails}
                             hiddenDatasetLabels={hiddenDatasetLabels}
                         />
+                            {/* VVV NEW LEGEND REDESIGN VVV */}
                             {selectedSessionMetas.length > 0 && selectedMetricMetas.length > 0 && (
-                                <div className="mt-4 flex items-center gap-2">
-                                    <Button variant="outline" size="sm" onClick={handleShowAll} className="text-xs">
-                                        <Eye className="h-4 w-4 mr-1.5" />
-                                        Show All
-                                    </Button>
-                                    <Button variant="outline" size="sm" onClick={handleHideAll} className="text-xs">
-                                        <EyeOff className="h-4 w-4 mr-1.5" />
-                                        Hide All
-                                    </Button>
-                                </div>
-                            )}
-                            {selectedSessionMetas.length > 0 && selectedMetricMetas.length > 0 && (
-                                <div className="mt-2 overflow-x-auto border rounded-lg bg-card"> {/* Changed mt-4 to mt-2 */}
-                                    <Table className="min-w-[600px]">
-                                        <TableHeader>
-                                            <TableRow>
-                                                <TableHead className="text-xs font-semibold">Session</TableHead>
+                                <div className="mt-4 border-t border-b w-[100%] ">
+                                    {/*
+                                      - 1st Column: 'max-content' (fits session names)
+                                      - N Columns:  'max-content' (fits stat names)
+                                    */}
+                                    <div
+                                        className="grid overflow-x-scroll"
+                                        style={{
+                                            gridTemplateColumns: `max-content repeat(${selectedMetricMetas.length}, max-content)`
+                                        }}
+                                    >
+                                        {/* 1. ROW 1: HEADER ROW (STATS) */}
 
-                                                {/* VVV 5. MODIFY THE STAT HEADERS VVV */}
+                                        {/* A. Corner Cell (Sticky Top-Left) */}
+                                        <div
+                                            className="sticky top-0 left-0 z-30 h-12 p-2 flex items-center justify-center gap-2 border-b border-r bg-muted"
+                                            style={{ minWidth: '100px' }}
+                                        >
+                                            <Button
+                                                variant="ghost"
+                                                size="icon-sm"
+                                                onClick={handleShowAll}
+                                                aria-label="Show All"
+                                                className="text-muted-foreground hover:text-foreground"
+                                            >
+                                                <Eye className="h-4 w-4" />
+                                            </Button>
+                                            <Button
+                                                variant="ghost"
+                                                size="icon-sm"
+                                                onClick={handleHideAll}
+                                                aria-label="Hide All"
+                                                className="text-muted-foreground hover:text-foreground"
+                                            >
+                                                <EyeOff className="h-4 w-4" />
+                                            </Button>
+                                        </div>
+
+                                        {/* B. Stat Header Cells (Sticky Top) - NO LONGER STICKY */}
+                                        {selectedMetricMetas.map(metric => {
+                                            // Check if all sessions for this stat are hidden
+                                            const allHidden = selectedSessionMetas.every(session =>
+                                                hiddenDatasetLabels.has(`${session.name} - ${metric.label}`)
+                                            );
+
+                                            return (
+                                                <div
+                                                    key={metric.key}
+                                                    role="button"
+                                                    tabIndex={0}
+                                                    data-state={allHidden ? 'hidden' : 'visible'}
+                                                    onClick={() => handleStatHeaderToggle(metric.key)}
+                                                    onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && handleStatHeaderToggle(metric.key)}
+                                                    aria-label={`Toggle all ${metric.label}`}
+                                                    className={cn(
+                                                        // --- FIX IS HERE: Removed "sticky top-0 z-20" ---
+                                                        "h-12 p-3 text-xs font-semibold text-right cursor-pointer border-b border-r bg-background hover:bg-accent/80",
+                                                        "flex items-center justify-center gap-1.5 min-w-[8rem]",
+                                                        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
+                                                        "transition-opacity data-[state=hidden]:opacity-40"
+                                                    )}
+                                                >
+                                                    <div
+                                                        className="w-2.5 h-2.5 rounded-full border flex-none"
+                                                        style={{ backgroundColor: getMetricColor(metric.key) }}
+                                                    />
+                                                    <span className="truncate">{metric.label}</span>
+                                                </div>
+                                            );
+                                        })}
+
+                                        {/* 2. DATA ROWS (One per SESSION) */}
+                                        {selectedSessionMetas.map(session => (
+                                            <React.Fragment key={session.id}> {/* Use Fragment to keep cells as direct grid children */}
+
+                                                {/* A. Session Name Cell (Sticky Left) */}
+                                                <div
+                                                    role="button"
+                                                    tabIndex={0}
+                                                    data-state={selectedMetricMetas.every(m => hiddenDatasetLabels.has(`${session.name} - ${m.label}`)) ? 'hidden' : 'visible'}
+                                                    onClick={() => handleSessionHeaderToggle(session.id)}
+                                                    onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && handleSessionHeaderToggle(session.id)}
+                                                    aria-label={`Toggle all ${session.name}`}
+                                                    className={cn(
+                                                        // This remains sticky, as requested
+                                                        "sticky left-0 z-20 h-12 px-3 py-2 text-xs font-medium border-b border-r bg-background flex items-center gap-1.5 cursor-pointer hover:bg-accent/80",
+                                                        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
+                                                        "transition-opacity data-[state=hidden]:opacity-40"
+                                                    )}
+                                                >
+                                                    <span className="truncate">{session.name}</span>
+                                                </div>
+
+                                                {/* B. Toggle Cells (Scrollable) */}
                                                 {selectedMetricMetas.map(metric => {
-                                                    // Check if all cells in this column are hidden
-                                                    const allHidden = selectedSessionMetas.every(session =>
-                                                        hiddenDatasetLabels.has(`${session.name} - ${metric.label}`)
-                                                    );
+                                                    const datasetLabel = `${session.name} - ${metric.label}`;
+                                                    const isHidden = hiddenDatasetLabels.has(datasetLabel);
 
                                                     return (
-                                                        <TableHead key={metric.key} className="text-right text-xs font-semibold p-1">
-                                                            <Button
-                                                                variant="ghost"
-                                                                size="sm"
-                                                                className={cn(
-                                                                    "h-auto p-1.5 text-xs font-semibold w-full justify-end",
-                                                                    allHidden && "opacity-40"
-                                                                )}
-                                                                onClick={() => handleStatHeaderToggle(metric.key)}
-                                                                aria-label={`Toggle all ${metric.label}`}
-                                                            >
-                                                                <div className="flex items-center justify-end gap-1.5">
-                                                                    <div
-                                                                        className="w-2.5 h-2.5 rounded-full border"
-                                                                        style={{ backgroundColor: getMetricColor(metric.key) }}
-                                                                    />
-                                                                    {metric.label}
-                                                                </div>
-                                                            </Button>
-                                                        </TableHead>
+                                                        <div
+                                                            key={`${session.id}-${metric.key}`} // Composite key
+                                                            role="button"
+                                                            tabIndex={0}
+                                                            data-state={isHidden ? 'hidden' : 'visible'}
+                                                            onClick={() => handleLegendToggle(datasetLabel)}
+                                                            onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && handleLegendToggle(datasetLabel)}
+                                                            aria-label={`Toggle ${datasetLabel}`}
+                                                            className={cn(
+                                                                "flex h-12 w-full items-center justify-center border-b border-r cursor-pointer hover:bg-accent/80",
+                                                                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+                                                            )}
+                                                        >
+                                                            <div
+                                                                className="w-2.5 h-2.5 rounded-full border transition-opacity data-[state=hidden]:opacity-20"
+                                                                data-state={isHidden ? 'hidden' : 'visible'}
+                                                                style={{ backgroundColor: getMetricColor(metric.key) }}
+                                                            />
+                                                        </div>
                                                     );
                                                 })}
-                                                {/* ^^^ END OF MODIFIED HEADERS ^^^ */}
-
-                                            </TableRow>
-                                        </TableHeader>
-                                        <TableBody>
-                                            {selectedSessionMetas.map(session => (
-                                                <TableRow key={session.id}>
-                                                    <TableCell className="font-medium text-xs">{session.name}</TableCell>
-                                                    {selectedMetricMetas.map(metric => {
-                                                        // Build the unique label for this dataset
-                                                        const datasetLabel = `${session.name} - ${metric.label}`;
-                                                        const isHidden = hiddenDatasetLabels.has(datasetLabel);
-
-                                                        return (
-                                                            <TableCell
-                                                                key={metric.key}
-                                                                className="text-right p-1" // Added p-1 for tighter spacing
-                                                            >
-                                                                <Button
-                                                                    variant="ghost"
-                                                                    size="sm"
-                                                                    className={cn(
-                                                                        "h-auto p-1.5 text-xs w-full justify-end", // Added w-full and justify-end
-                                                                        isHidden && "opacity-40" // Style when hidden
-                                                                    )}
-                                                                    onClick={() => handleLegendToggle(datasetLabel)} // Call handler
-                                                                    aria-label={`Toggle ${datasetLabel}`}
-                                                                >
-                                                                    <div className="flex items-center justify-end gap-1.5">
-                                                                        <div
-                                                                            className="w-2.5 h-2.5 rounded-full border"
-                                                                            style={{ backgroundColor: getMetricColor(metric.key) }}
-                                                                        />
-                                                                        {/* We can hide the label text, as it's redundant with the header */}
-                                                                        {/* {metric.label} */}
-                                                                    </div>
-                                                                </Button>
-                                                            </TableCell>
-                                                        );
-                                                    })}
-                                                </TableRow>
-                                            ))}
-                                        </TableBody>
-                                    </Table>
+                                            </React.Fragment>
+                                        ))}
+                                    </div>
                                 </div>
                             )}
+                            {/* ^^^ END OF NEW LEGEND REDESIGN ^^^ */}
                         </>
                     ) : (
                         <div style={{ height: `${chartHeight}px` }} className="flex w-full items-center justify-center border-2 border-dashed rounded-lg mt-4">
