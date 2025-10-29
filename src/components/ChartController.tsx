@@ -418,6 +418,130 @@ export const ChartController = ({
     }, [runs, selectedSessionIds]);
 
 
+    const getMetricColor = useCallback((metricKey: string): string => {
+        const override = colorOverrides[metricKey];
+        if (override) return override; // Return override immediately if it exists
+
+        const metricIndex = allAvailableMetrics.findIndex(m => m.key === metricKey);
+        if (metricIndex === -1 || CHART_COLORS.length === 0) {
+            // Fallback if metric not found or no colors defined
+            return getComputedColor("hsl(var(--primary))") || "#8884d8";
+        }
+        // Use getComputedColor to resolve CSS variable at runtime
+        return getComputedColor(CHART_COLORS[metricIndex % CHART_COLORS.length]);
+    }, [colorOverrides, allAvailableMetrics]);
+
+    // --- Prepare data for Chart.js from Worker Output ---
+    const chartJsDisplayData = useMemo(() => {
+        const { labels, datasets: workerDatasets } = processedChartData;
+        if (!labels || labels.length === 0 || !workerDatasets || Object.keys(workerDatasets).length === 0) {
+            return { finalLabels: [], finalDatasets: [], yAxesConfig: {} };
+        }
+
+        const finalDatasets: ChartData<'line', (number | Point | null)[], number | string>['datasets'] = [];
+        const yAxesConfig: { left?: boolean; right?: boolean; ram?: boolean } = {};
+        const activeRuns = runs.filter((run) => selectedRunIds.has(run.id));
+
+        activeRuns.forEach(run => {
+            const sessionName = sessionNameMap.get(run.sessionId) || "Unknown";
+            selectedMetrics.forEach(metricKey => {
+                const dataKey = `${run.id}:${metricKey}`;
+                const metricMeta = allAvailableMetrics.find(m => m.key === metricKey);
+
+                if (metricMeta && workerDatasets[dataKey]) {
+                    let yAxisID: 'yLeft' | 'yRight' | 'yRam';
+                    if (metricKey.startsWith("RAM.") || (metricKey.startsWith("GPU.VRAM.") && !metricKey.includes("PERCENTAGE"))) {
+                        yAxisID = 'yRam'; yAxesConfig.ram = true;
+                    } else if (metricMeta.isPercentage) {
+                        yAxisID = 'yRight'; yAxesConfig.right = true;
+                    } else {
+                        yAxisID = 'yLeft'; yAxesConfig.left = true;
+                    }
+
+                    finalDatasets.push({
+                        label: `${sessionName} - ${metricMeta.label}`,
+                        data: workerDatasets[dataKey], // Use the {x, y} data from worker
+                        borderColor: getMetricColor(metricKey),
+                        backgroundColor: getMetricColor(metricKey), // Use same color, alpha is usually handled by Chart.js
+                        borderWidth: 1.5,
+                        pointRadius: 0,
+                        pointHoverRadius: 4, // Make hover point visible
+                        pointHitRadius: 10, // Larger hit radius
+                        tension: 0, // Straight lines often better for performance data
+                        yAxisID: yAxisID,
+                        parsing: false,
+                        spanGaps: false,
+                    });
+                }
+            });
+        });
+
+        return { finalLabels: labels, finalDatasets, yAxesConfig };
+    }, [processedChartData.labels, processedChartData.datasets, runs, selectedRunIds, selectedMetrics, sessionNameMap, allAvailableMetrics, getMetricColor, debouncedTheme]);
+
+    const yRamMax = useMemo(() => {
+        let overallMaxRam = 0;
+
+        // If no sessions are selected, we can't determine a max.
+        if (selectedSessionIds.size === 0) {
+            return undefined;
+        }
+
+        // Iterate over each selected session ID
+        for (const sessionId of selectedSessionIds) {
+            const staticData = sessions.find(s => s.sessionId === sessionId)?.staticData;
+
+            if (staticData) {
+                // Safely parse "Total RAM (MB)"
+                const ramString = staticData["Total RAM (MB)"];
+                const totalRam = ramString ? parseFloat(ramString) : 0;
+                const validRam = !isNaN(totalRam) ? totalRam : 0;
+
+                // Safely parse "Total VRAM (MB)"
+                const vramString = staticData["Total VRAM (MB)"];
+                const totalVram = vramString ? parseFloat(vramString) : 0;
+                const validVram = !isNaN(totalVram) ? totalVram : 0;
+
+                // Update the overallMaxRam if this session's RAM or VRAM is higher
+                const sessionMax = Math.max(validRam, validVram);
+                if (sessionMax > overallMaxRam) {
+                    overallMaxRam = sessionMax;
+                }
+            }
+        }
+
+        // If we didn't find any valid RAM/VRAM data in *any* session, return undefined to autoscale
+        if (overallMaxRam === 0) {
+            return undefined;
+        }
+
+        return overallMaxRam; // Return the highest value found across all selected sessions
+
+    }, [sessions, selectedSessionIds]);
+
+    const yLeftMax = useMemo(() => {
+        let max = -Infinity;
+        let foundLeftAxis = false;
+
+        chartJsDisplayData.finalDatasets.forEach(dataset => {
+            if (dataset.yAxisID === 'yLeft') {
+                foundLeftAxis = true;
+                dataset.data.forEach(point => {
+                    if (point && typeof point.y === 'number' && point.y > max) {
+                        max = point.y;
+                    }
+                });
+            }
+        });
+
+        // If we found a left-axis dataset and a valid max, add a 5% buffer
+        if (foundLeftAxis && max > -Infinity) {
+            return max * 1.05; // 5% padding so it's not on the ceiling
+        }
+
+        return undefined; // Let it autoscale if no yLeft data exists
+    }, [chartJsDisplayData.finalDatasets]); // Depends on the processed datasets
+
     const colorInputRef = useRef<HTMLInputElement>(null);
 
     // --- Load/Save Presets/Colors ---
@@ -436,18 +560,6 @@ export const ChartController = ({
         localStorage.setItem(COLOR_OVERRIDES_KEY, JSON.stringify(newOverrides));
         setColorOverrides(newOverrides);
     };
-    const getMetricColor = useCallback((metricKey: string): string => {
-        const override = colorOverrides[metricKey];
-        if (override) return override; // Return override immediately if it exists
-
-        const metricIndex = allAvailableMetrics.findIndex(m => m.key === metricKey);
-        if (metricIndex === -1 || CHART_COLORS.length === 0) {
-            // Fallback if metric not found or no colors defined
-            return getComputedColor("hsl(var(--primary))") || "#8884d8";
-        }
-        // Use getComputedColor to resolve CSS variable at runtime
-        return getComputedColor(CHART_COLORS[metricIndex % CHART_COLORS.length]);
-    }, [colorOverrides, allAvailableMetrics]);
 
     const handleColorChange = (metricKey: string, color: string) => {
         saveColorOverrides({ ...colorOverrides, [metricKey]: color });
@@ -583,56 +695,6 @@ export const ChartController = ({
             setIsChartLoading(false);
         }
     }, [runs, selectedRunIds, xAxisKey, selectedMetrics, toast]);
-
-
-    // --- Prepare data for Chart.js from Worker Output ---
-    const chartJsDisplayData = useMemo(() => {
-        const { labels, datasets: workerDatasets } = processedChartData;
-        if (!labels || labels.length === 0 || !workerDatasets || Object.keys(workerDatasets).length === 0) {
-            return { finalLabels: [], finalDatasets: [], yAxesConfig: {} };
-        }
-
-        const finalDatasets: ChartData<'line', (number | Point | null)[], number | string>['datasets'] = [];
-        const yAxesConfig: { left?: boolean; right?: boolean; ram?: boolean } = {};
-        const activeRuns = runs.filter((run) => selectedRunIds.has(run.id));
-
-        activeRuns.forEach(run => {
-            const sessionName = sessionNameMap.get(run.sessionId) || "Unknown";
-            selectedMetrics.forEach(metricKey => {
-                const dataKey = `${run.id}:${metricKey}`;
-                const metricMeta = allAvailableMetrics.find(m => m.key === metricKey);
-
-                if (metricMeta && workerDatasets[dataKey]) {
-                    let yAxisID: 'yLeft' | 'yRight' | 'yRam';
-                    if (metricKey.startsWith("RAM.") || (metricKey.startsWith("GPU.VRAM.") && !metricKey.includes("PERCENTAGE"))) {
-                        yAxisID = 'yRam'; yAxesConfig.ram = true;
-                    } else if (metricMeta.isPercentage) {
-                        yAxisID = 'yRight'; yAxesConfig.right = true;
-                    } else {
-                        yAxisID = 'yLeft'; yAxesConfig.left = true;
-                    }
-
-                    finalDatasets.push({
-                        label: `${sessionName} - ${metricMeta.label}`,
-                        data: workerDatasets[dataKey], // Use the {x, y} data from worker
-                        borderColor: getMetricColor(metricKey),
-                        backgroundColor: getMetricColor(metricKey), // Use same color, alpha is usually handled by Chart.js
-                        borderWidth: 1.5,
-                        pointRadius: 0,
-                        pointHoverRadius: 4, // Make hover point visible
-                        pointHitRadius: 10, // Larger hit radius
-                        tension: 0, // Straight lines often better for performance data
-                        yAxisID: yAxisID,
-                        parsing: false,
-                        spanGaps: false,
-                    });
-                }
-            });
-        });
-
-        return { finalLabels: labels, finalDatasets, yAxesConfig };
-    }, [processedChartData.labels, processedChartData.datasets, runs, selectedRunIds, selectedMetrics, sessionNameMap, allAvailableMetrics, getMetricColor, debouncedTheme]);
-
 
     // --- Prepare Annotations for Chart.js ---
     const { eventAnnotations, burstAnnotations } = useMemo(() => {
@@ -1056,6 +1118,8 @@ export const ChartController = ({
                     {/* Chart */}
                     {chartJsDisplayData.finalLabels.length > 0 && chartJsDisplayData.finalDatasets.length > 0 ? (
                         <><ChartJsChart
+                            yRamMax={yRamMax}
+                            yLeftMax={yLeftMax}
                             ref={chartComponentRef}
                             key={selectedMap + xAxisKey + Array.from(selectedSessionIds).join('-')} // Force re-mount on major changes
                             chartTitle={chartTitle}

@@ -52,6 +52,8 @@ interface ChartJsChartProps {
   onPointClick: (dataPoint: PerformanceLogEntry | null) => void; // Callback for point details
   fullDataForDetails: PerformanceLogEntry[]; // Needed for click handler and tooltip badge
   hiddenDatasetLabels: Set<string>;
+  yRamMax?: number;
+  yLeftMax?: number;
 }
 
 // Helper function to create or get the tooltip element
@@ -124,7 +126,9 @@ export const ChartJsChart = forwardRef<ChartJsChartHandle, ChartJsChartProps>(({
   chartHeight,
   onPointClick,
   fullDataForDetails,
-  hiddenDatasetLabels
+  hiddenDatasetLabels,
+  yRamMax,
+  yLeftMax,
 }, ref) => {
   const chartRef = useRef<ChartJS<"line", (number | Point | null)[], number | string> | null>(null);
   const { theme } = useTheme(); // Get current theme
@@ -163,6 +167,7 @@ export const ChartJsChart = forwardRef<ChartJsChartHandle, ChartJsChartProps>(({
   const options: ChartOptions<"line"> = useMemo(() => {
 
     const xMax = labels.length > 0 ? (labels[labels.length - 1] as number) : undefined;
+    const xMin = labels.length > 0 ? (labels[0] as number) : undefined; // Get the min value
 
     return {
       maintainAspectRatio: false,
@@ -178,6 +183,7 @@ export const ChartJsChart = forwardRef<ChartJsChartHandle, ChartJsChartProps>(({
       scales: {
         x: {
           max: xMax,
+          min: xMin,
           type: 'linear',
           position: 'bottom',
           title: {
@@ -208,6 +214,8 @@ export const ChartJsChart = forwardRef<ChartJsChartHandle, ChartJsChartProps>(({
             id: 'yLeft',
             type: 'linear',
             position: 'left',
+            min: 0,
+            max: yLeftMax,
             title: { display: true, text: 'Value', color: titleColor },
             grid: { color: gridColor, drawOnChartArea: true },
             ticks: { color: tickColor },
@@ -230,6 +238,8 @@ export const ChartJsChart = forwardRef<ChartJsChartHandle, ChartJsChartProps>(({
             id: 'yRam',
             type: 'linear',
             position: 'right',
+            min: 0,
+            max: yRamMax,
             title: { display: true, text: 'RAM / VRAM (MB)', color: titleColor },
             grid: { drawOnChartArea: false },
             ticks: { color: tickColor },
@@ -463,6 +473,12 @@ export const ChartJsChart = forwardRef<ChartJsChartHandle, ChartJsChartProps>(({
           }
         },
         zoom: {
+          limits: { 
+            x: { min: xMin, max: xMax },
+            yLeft: { min: 0, max: yLeftMax },
+            yRight: { min: 0, max: 100 },
+            yRam: { min: 0, max: yRamMax },
+          },
           pan: {
             enabled: true,
             mode: 'x',
@@ -471,7 +487,6 @@ export const ChartJsChart = forwardRef<ChartJsChartHandle, ChartJsChartProps>(({
           zoom: {
             wheel: {
               enabled: true,
-              modifierKey: 'ctrl',
             },
             pinch: {
               enabled: true,
@@ -535,6 +550,8 @@ export const ChartJsChart = forwardRef<ChartJsChartHandle, ChartJsChartProps>(({
   }, [
     xAxisKey,
     yAxesConfig,
+    yRamMax,
+    yLeftMax,
     eventAnnotations,
     burstAnnotations,
     onPointClick,
