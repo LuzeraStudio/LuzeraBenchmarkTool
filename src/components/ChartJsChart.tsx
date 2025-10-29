@@ -1,5 +1,5 @@
 // src/components/ChartJsChart.tsx
-import React, { useRef, useEffect, useMemo, useState, useImperativeHandle, forwardRef } from "react";
+import { useRef, useEffect, useMemo, useState, useImperativeHandle, forwardRef } from "react";
 import { Line } from "react-chartjs-2";
 import {
   Chart as ChartJS,
