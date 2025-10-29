@@ -5,6 +5,7 @@ import {
     useEffect,
     useRef,
     useCallback,
+    Fragment
 } from "react";
 // --- Chart.js Imports ---
 import { ChartJsChart, type ChartJsChartHandle } from "./ChartJsChart";
@@ -84,8 +85,6 @@ import {
 } from "@/components/ui/dialog";
 import { useChartSettings, MIN_CHART_HEIGHT, MAX_CHART_HEIGHT, HEIGHT_STEP } from "@/contexts/ChartSettingsContext";
 import { useTheme } from "@/contexts/ThemeContext";
-import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
-import React from "react";
 
 // --- Worker Message Types (Using Updated Worker Output) ---
 interface ChartJsWorkerDataset {
@@ -1126,7 +1125,7 @@ export const ChartController = ({
 
                                         {/* 2. DATA ROWS (One per SESSION) */}
                                         {selectedSessionMetas.map(session => (
-                                            <React.Fragment key={session.id}> {/* Use Fragment to keep cells as direct grid children */}
+                                            <Fragment key={session.id}> {/* Use Fragment to keep cells as direct grid children */}
 
                                                 {/* A. Session Name Cell (Sticky Left) */}
                                                 <div
@@ -1173,7 +1172,7 @@ export const ChartController = ({
                                                         </div>
                                                     );
                                                 })}
-                                            </React.Fragment>
+                                            </Fragment>
                                         ))}
                                     </div>
                                 </div>
