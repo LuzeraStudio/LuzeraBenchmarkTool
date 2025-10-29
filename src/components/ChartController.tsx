@@ -172,8 +172,59 @@ export const ChartController = ({
     const { selectedMap, selectedMetrics, xAxisKey, setSelectedMap, setSelectedMetrics,
         setXAxisKey, selectedSessionIds, setSelectedSessionIds, isInitialSessionLoadDone,
         setIsInitialSessionLoadDone, chartHeight, setChartHeight } = useChartSettings();
-
+    const [hiddenDatasetLabels, setHiddenDatasetLabels] = useState(new Set<string>());
     const [debouncedTheme, setDebouncedTheme] = useState(theme);
+
+    const handleLegendToggle = (datasetLabel: string) => {
+        setHiddenDatasetLabels(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(datasetLabel)) {
+                newSet.delete(datasetLabel);
+            } else {
+                newSet.add(datasetLabel);
+            }
+            return newSet;
+        });
+    };
+
+    const allAvailableMetrics = useMemo((): AvailableMetric[] => {
+        const metricsMap = new Map<string, AvailableMetric>();
+        runs.forEach((run) => {
+            run.availableMetrics.forEach((metric) => {
+                if (!metricsMap.has(metric.key)) {
+                    metricsMap.set(metric.key, metric);
+                }
+            });
+        });
+        return Array.from(metricsMap.values()).sort((a, b) => a.key.localeCompare(b.key));
+    }, [runs]);
+
+    const sessionNameMap = useMemo(() => new Map(sessions.map(s => [s.sessionId, s.sessionName])), [sessions]);
+
+    const uniqueSessionsInRuns = useMemo(() => {
+        const sessionMap = new Map<string, { id: string; name: string }>();
+        runs.forEach((run) => {
+            if (!sessionMap.has(run.sessionId)) {
+                sessionMap.set(run.sessionId, {
+                    id: run.sessionId,
+                    name: sessionNameMap.get(run.sessionId) || "Unknown Session",
+                });
+            }
+        });
+        return Array.from(sessionMap.values()).sort((a, b) => a.name.localeCompare(b.name)); // Sort sessions
+    }, [runs, sessionNameMap]);
+
+    const selectedMetricMetas = useMemo(() => {
+        return allAvailableMetrics
+            .filter(m => selectedMetrics.has(m.key))
+            .sort((a, b) => a.label.localeCompare(b.label));
+    }, [allAvailableMetrics, selectedMetrics]);
+
+    const selectedSessionMetas = useMemo(() => {
+        return uniqueSessionsInRuns
+            .filter(s => selectedSessionIds.has(s.id))
+            .sort((a, b) => a.name.localeCompare(b.name));
+    }, [uniqueSessionsInRuns, selectedSessionIds]);
 
     useEffect(() => {
         // This effect runs *after* the DOM update from ThemeProvider.
@@ -204,19 +255,6 @@ export const ChartController = ({
     const [isPointDialogOpen, setIsPointDialogOpen] = useState(false);
 
 
-    // --- Selection State ---
-    const allAvailableMetrics = useMemo((): AvailableMetric[] => {
-        const metricsMap = new Map<string, AvailableMetric>();
-        runs.forEach((run) => {
-            run.availableMetrics.forEach((metric) => {
-                if (!metricsMap.has(metric.key)) {
-                    metricsMap.set(metric.key, metric);
-                }
-            });
-        });
-        return Array.from(metricsMap.values()).sort((a, b) => a.key.localeCompare(b.key));
-    }, [runs]);
-
     // Effect to update defaults based on allAvailableMetrics
     useEffect(() => {
         // Only set defaults if the current selection is empty AND metrics are available
@@ -242,20 +280,6 @@ export const ChartController = ({
         // not when selectedMetrics changes, to avoid loops.
     }, [allAvailableMetrics, selectedMetrics.size, setSelectedMetrics]);
 
-
-    const sessionNameMap = useMemo(() => new Map(sessions.map(s => [s.sessionId, s.sessionName])), [sessions]);
-    const uniqueSessionsInRuns = useMemo(() => {
-        const sessionMap = new Map<string, { id: string; name: string }>();
-        runs.forEach((run) => {
-            if (!sessionMap.has(run.sessionId)) {
-                sessionMap.set(run.sessionId, {
-                    id: run.sessionId,
-                    name: sessionNameMap.get(run.sessionId) || "Unknown Session",
-                });
-            }
-        });
-        return Array.from(sessionMap.values()).sort((a, b) => a.name.localeCompare(b.name)); // Sort sessions
-    }, [runs, sessionNameMap]);
 
     // Effect 1: Initialize selected sessions ONCE if context is empty and runs are available
     useEffect(() => {
@@ -934,7 +958,7 @@ export const ChartController = ({
 
                     {/* Chart */}
                     {chartJsDisplayData.finalLabels.length > 0 && chartJsDisplayData.finalDatasets.length > 0 ? (
-                        <ChartJsChart
+                        <><ChartJsChart
                             key={selectedMap + xAxisKey + Array.from(selectedSessionIds).join('-')} // Force re-mount on major changes
                             chartTitle={chartTitle}
                             datasets={chartJsDisplayData.finalDatasets}
@@ -946,7 +970,68 @@ export const ChartController = ({
                             chartHeight={chartHeight}
                             onPointClick={handlePointClick}
                             fullDataForDetails={processedChartData.fullDataForDetails}
+                            hiddenDatasetLabels={hiddenDatasetLabels}
                         />
+                            {selectedSessionMetas.length > 0 && selectedMetricMetas.length > 0 && (
+                                <div className="mt-4 overflow-x-auto border rounded-lg bg-card">
+                                    <Table className="min-w-[600px]">
+                                        <TableHeader>
+                                            <TableRow>
+                                                <TableHead className="text-xs font-semibold">Session</TableHead>
+                                                {selectedMetricMetas.map(metric => (
+                                                    <TableHead key={metric.key} className="text-right text-xs font-semibold">
+                                                        <div className="flex items-center justify-end gap-1.5">
+                                                            <div
+                                                                className="w-2.5 h-2.5 rounded-full border"
+                                                                style={{ backgroundColor: getMetricColor(metric.key) }}
+                                                            />
+                                                            {metric.label}
+                                                        </div>
+                                                    </TableHead>
+                                                ))}
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {selectedSessionMetas.map(session => (
+                                                <TableRow key={session.id}>
+                                                    <TableCell className="font-medium text-xs">{session.name}</TableCell>
+                                                    {selectedMetricMetas.map(metric => {
+                                                        // Build the unique label for this dataset
+                                                        const datasetLabel = `${session.name} - ${metric.label}`;
+                                                        const isHidden = hiddenDatasetLabels.has(datasetLabel);
+
+                                                        return (
+                                                            <TableCell
+                                                                key={metric.key}
+                                                                className="text-right"
+                                                            >
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="sm"
+                                                                    className={cn(
+                                                                        "h-auto p-1.5 text-xs",
+                                                                        isHidden && "opacity-40" // Style when hidden
+                                                                    )}
+                                                                    onClick={() => handleLegendToggle(datasetLabel)} // Call handler
+                                                                >
+                                                                    <div className="flex items-center justify-end gap-1.5">
+                                                                        <div
+                                                                            className="w-2.5 h-2.5 rounded-full border"
+                                                                            style={{ backgroundColor: getMetricColor(metric.key) }}
+                                                                        />
+                                                                        {metric.label}
+                                                                    </div>
+                                                                </Button>
+                                                            </TableCell>
+                                                        );
+                                                    })}
+                                                </TableRow>
+                                            ))}
+                                        </TableBody>
+                                    </Table>
+                                </div>
+                            )}
+                        </>
                     ) : (
                         <div style={{ height: `${chartHeight}px` }} className="flex w-full items-center justify-center border-2 border-dashed rounded-lg mt-4">
                             <p className="text-muted-foreground text-sm">

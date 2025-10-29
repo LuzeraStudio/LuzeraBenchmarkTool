@@ -51,6 +51,7 @@ interface ChartJsChartProps {
   chartHeight: number;
   onPointClick: (dataPoint: PerformanceLogEntry | null) => void; // Callback for point details
   fullDataForDetails: PerformanceLogEntry[]; // Needed for click handler and tooltip badge
+  hiddenDatasetLabels: Set<string>;
 }
 
 // Helper function to create or get the tooltip element
@@ -119,7 +120,8 @@ export const ChartJsChart: React.FC<ChartJsChartProps> = ({
   burstAnnotations,
   chartHeight,
   onPointClick,
-  fullDataForDetails, // Ensure fullDataForDetails is destructured
+  fullDataForDetails,
+  hiddenDatasetLabels
 }) => {
   const chartRef = useRef<ChartJS<"line", (number | Point | null)[], number | string> | null>(null);
   const { theme } = useTheme(); // Get current theme
@@ -223,8 +225,8 @@ export const ChartJsChart: React.FC<ChartJsChartProps> = ({
       },
       plugins: {
         legend: {
+          display: false,
           position: 'bottom',
-
           labels: {
             color: tickColor,
             usePointStyle: true,
@@ -525,6 +527,33 @@ export const ChartJsChart: React.FC<ChartJsChartProps> = ({
     fullDataForDetails,
     debouncedTheme
   ]);
+
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+
+    let needsUpdate = false;
+    chart.data.datasets.forEach((dataset, index) => {
+      const label = dataset.label;
+      if (label) {
+        const shouldBeHidden = hiddenDatasetLabels.has(label);
+        const isCurrentlyHidden = !chart.isDatasetVisible(index);
+
+        if (shouldBeHidden && !isCurrentlyHidden) {
+          chart.hide(index);
+          needsUpdate = true;
+        } else if (!shouldBeHidden && isCurrentlyHidden) {
+          chart.show(index);
+          needsUpdate = true;
+        }
+      }
+    });
+
+    if (needsUpdate) {
+      chart.update(); // Apply changes
+    }
+
+  }, [hiddenDatasetLabels, datasets]);
 
   // Effect to reset zoom/pan when data fundamentally changes
   useEffect(() => {
