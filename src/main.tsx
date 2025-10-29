@@ -4,13 +4,16 @@ import './index.css'
 import App from './App.tsx'
 import { ThemeProvider } from './contexts/ThemeContext.tsx';
 import { BenchmarkDataProvider } from './contexts/BenchmarkContext.tsx';
+import { ChartSettingsProvider } from './contexts/ChartSettingsContext.tsx';
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <ThemeProvider defaultTheme="system" storageKey="vite-ui-theme">
-      <BenchmarkDataProvider>
-        <App />
-      </BenchmarkDataProvider>
+      <ChartSettingsProvider>
+        <BenchmarkDataProvider>
+          <App />
+        </BenchmarkDataProvider>
+      </ChartSettingsProvider>
     </ThemeProvider>
   </StrictMode>,
 );

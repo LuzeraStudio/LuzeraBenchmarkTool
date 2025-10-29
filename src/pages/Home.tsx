@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { FileUploader } from "@/components/FileUploader";
 import { SystemInfo } from "@/components/SystemInfo";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -9,10 +9,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
 import type { BenchmarkRun } from "@/types/benchmark";
+import { useChartSettings } from "@/contexts/ChartSettingsContext";
 
 const Home = () => {
     const { sessions, isLoading } = useBenchmarkData();
-    const [selectedMap, setSelectedMap] = useState<string>("");
+    const { selectedMap, setSelectedMap } = useChartSettings();
 
     const mapNames = useMemo(() => {
         const mapSet = new Set<string>();
@@ -24,14 +25,14 @@ const Home = () => {
         return Array.from(mapSet).sort();
     }, [sessions]);
 
-    if (
-        mapNames.length > 0 &&
-        (!selectedMap || !mapNames.includes(selectedMap))
-    ) {
-        setSelectedMap(mapNames[0]);
-    } else if (mapNames.length === 0 && selectedMap) {
-        setSelectedMap("");
-    }
+    // Effect to initialize or reset selectedMap based on available mapNames
+    useEffect(() => {
+        if (mapNames.length > 0 && (!selectedMap || !mapNames.includes(selectedMap))) {
+            setSelectedMap(mapNames[0]);
+        } else if (mapNames.length === 0 && selectedMap) {
+            setSelectedMap(""); // Clear map if no maps are available anymore
+        }
+    }, [mapNames, selectedMap, setSelectedMap]);
 
     const currentMapRuns = useMemo(() => {
         if (!selectedMap) return [];
@@ -113,8 +114,8 @@ const Home = () => {
                                             key={selectedMap}
                                             runs={currentMapRuns}
                                             mapNames={mapNames}
-                                            selectedMap={selectedMap}
-                                            onMapChange={setSelectedMap}
+                                            // selectedMap={selectedMap}
+                                            // onMapChange={setSelectedMap}
                                         />
                                     ) : (
                                         <p className="text-center text-muted-foreground italic py-8">

@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
 import type { BenchmarkSession } from "../types/benchmark";
-import { useToast } from "@/hooks/use-toast";
+import { useToast } from "@/hooks/useToast";
 
 interface BenchmarkDataContextType {
   sessions: BenchmarkSession[];

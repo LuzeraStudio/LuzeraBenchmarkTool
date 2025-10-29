@@ -143,3 +143,9 @@
     @apply bg-background text-foreground;
   }
 }
+
+.recharts-tooltip-wrapper {
+  z-index: 1000 !important; /* High z-index, !important might be needed to override inline styles */
+  /* You might need position: relative; if it doesn't have one */
+  position: relative;
+}
