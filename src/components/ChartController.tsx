@@ -85,7 +85,6 @@ import {
 } from "@/components/ui/dialog";
 import { useChartSettings, MIN_CHART_HEIGHT, MAX_CHART_HEIGHT, HEIGHT_STEP } from "@/contexts/ChartSettingsContext";
 import { useTheme } from "@/contexts/ThemeContext";
-import { resetZoom } from "chartjs-plugin-zoom";
 
 // --- Worker Message Types (Using Updated Worker Output) ---
 interface ChartJsWorkerDataset {
