@@ -54,7 +54,6 @@ import {
     Check,
     ZoomIn,
     ZoomOut,
-    Download,
     Palette,
     X,
     Cog,
@@ -63,7 +62,8 @@ import {
     MapPin,
     Eye,
     EyeOff,
-    StretchVertical
+    StretchVertical,
+    ClipboardCopy
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useBenchmarkData } from "@/contexts/BenchmarkContext";
@@ -85,6 +85,7 @@ import {
 } from "@/components/ui/dialog";
 import { useChartSettings, MIN_CHART_HEIGHT, MAX_CHART_HEIGHT, HEIGHT_STEP } from "@/contexts/ChartSettingsContext";
 import { useTheme } from "@/contexts/ThemeContext";
+import { resetZoom } from "chartjs-plugin-zoom";
 
 // --- Worker Message Types (Using Updated Worker Output) ---
 interface ChartJsWorkerDataset {
@@ -173,9 +174,15 @@ export const ChartController = ({
     const { theme } = useTheme();
     const { toast } = useToast();
     const { sessions, deleteSession } = useBenchmarkData();
-    const { selectedMap, selectedMetrics, xAxisKey, setSelectedMap, setSelectedMetrics,
-        setXAxisKey, selectedSessionIds, setSelectedSessionIds, isInitialSessionLoadDone,
-        setIsInitialSessionLoadDone, chartHeight, setChartHeight, isTooltipEnabled, setIsTooltipEnabled } = useChartSettings();
+    const {
+        selectedMap, selectedMetrics,
+        setSelectedMap, setSelectedMetrics,
+        xAxisKey, setXAxisKey,
+        selectedSessionIds, setSelectedSessionIds,
+        isInitialSessionLoadDone, setIsInitialSessionLoadDone,
+        chartHeight, setChartHeight,
+        isTooltipEnabled, setIsTooltipEnabled,
+        chartZoom, setChartZoom } = useChartSettings();
     const [hiddenDatasetLabels, setHiddenDatasetLabels] = useState(new Set<string>());
     const [debouncedTheme, setDebouncedTheme] = useState(theme);
     const chartComponentRef = useRef<ChartJsChartHandle>(null);
@@ -892,31 +899,125 @@ export const ChartController = ({
 
 
     // --- Export Chart Logic ---
-    const exportChart = useCallback(() => {
-        const canvasElement = document.getElementById('chartjs-container')?.querySelector('canvas');
-        if (canvasElement) {
-            const title = runs.filter(r => selectedRunIds.has(r.id)).map(r => r.name).join("_vs_") || "chart";
-            const tempCanvas = document.createElement('canvas');
-            tempCanvas.width = canvasElement.width;
-            tempCanvas.height = canvasElement.height;
-            const tempCtx = tempCanvas.getContext('2d');
-            if (tempCtx) {
-                const bgColor = getComputedColor("hsl(var(--background))") || '#ffffff';
-                tempCtx.fillStyle = bgColor;
-                tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
-                tempCtx.drawImage(canvasElement, 0, 0);
-                const link = document.createElement("a");
-                link.download = `${title.toLowerCase().replace(/ /g, "_")}.png`;
-                link.href = tempCanvas.toDataURL("image/png");
-                link.click();
-                toast({ title: "Chart Exported", description: "Chart saved as PNG." });
-            } else {
-                toast({ title: "Error", description: "Could not create temporary canvas for export.", variant: "destructive" });
-            }
-        } else {
-            toast({ title: "Error", description: "Could not find chart canvas element.", variant: "destructive" });
+    // const exportChart = useCallback(() => {
+    //     const canvasElement = document.getElementById('chartjs-container')?.querySelector('canvas');
+    //     if (canvasElement) {
+    //         const title = runs.filter(r => selectedRunIds.has(r.id)).map(r => r.name).join("_vs_") || "chart";
+    //         const tempCanvas = document.createElement('canvas');
+    //         tempCanvas.width = canvasElement.width;
+    //         tempCanvas.height = canvasElement.height;
+    //         const tempCtx = tempCanvas.getContext('2d');
+    //         if (tempCtx) {
+    //             const bgColor = getComputedColor("hsl(var(--background))") || '#ffffff';
+    //             tempCtx.fillStyle = bgColor;
+    //             tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+    //             tempCtx.drawImage(canvasElement, 0, 0);
+    //             const link = document.createElement("a");
+    //             link.download = `${title.toLowerCase().replace(/ /g, "_")}.png`;
+    //             link.href = tempCanvas.toDataURL("image/png");
+    //             link.click();
+    //             toast({ title: "Chart Exported", description: "Chart saved as PNG." });
+    //         } else {
+    //             toast({ title: "Error", description: "Could not create temporary canvas for export.", variant: "destructive" });
+    //         }
+    //     } else {
+    //         toast({ title: "Error", description: "Could not find chart canvas element.", variant: "destructive" });
+    //     }
+    // }, [runs, selectedRunIds, toast, debouncedTheme]);
+
+    // --- Extract Data Logic ---
+    const handleExtractData = useCallback(() => {
+        if (!chartComponentRef.current) {
+            toast({ variant: "destructive", title: "Extract Error", description: "Chart is not ready." });
+            return;
         }
-    }, [runs, selectedRunIds, toast, debouncedTheme]);
+
+        const { xMin: rawMin, xMax: rawMax } = chartComponentRef.current.getZoomRange();
+
+        if (typeof rawMin !== 'number' || typeof rawMax !== 'number') {
+            toast({ variant: "destructive", title: "Extract Error", description: "Could not determine chart zoom range." });
+            return;
+        }
+
+        const xMin = rawMin;
+        const xMax = rawMax;
+        const fullData = processedChartData.fullDataForDetails;
+
+        const filteredData = fullData.filter(entry => {
+            const xVal = entry[xAxisKey] as number;
+            return typeof xVal === 'number' && xVal >= xMin && xVal <= xMax;
+        });
+
+        if (filteredData.length === 0) {
+            toast({ title: "Extract Data", description: "No data found in the selected zoom range." });
+            return;
+        }
+
+        const metricKeys = Array.from(selectedMetrics);
+        // Format labels for CSV header, replacing spaces with dots
+        const metricLabels = metricKeys.map(key =>
+            allAvailableMetrics.find(m => m.key === key)?.label.replace(/ /g, ".") || key
+        );
+
+        const headers = ["Run", "Session", xAxisKey, "TIMESTAMP", ...metricLabels].join(",");
+
+        let csvContent = headers + "\n";
+        const rows: string[] = [];
+
+        const activeRuns = runs.filter(r => selectedRunIds.has(r.id));
+
+        for (const entry of filteredData) {
+            const xVal = (entry[xAxisKey] as number)?.toFixed(3) || '';
+
+            for (const run of activeRuns) {
+                const runId = run.id;
+                const sessionName = sessionNameMap.get(run.sessionId) || 'Unknown';
+                const runName = run.name; // This is the unique display name
+
+                const timestampKey = `${runId}:TIMESTAMP`;
+                const timestamp = (entry[timestampKey] as number)?.toFixed(3) || '';
+
+                const metricValues = metricKeys.map(key => {
+                    const dataKey = `${runId}:${key}`;
+                    const val = entry[dataKey];
+                    if (typeof val === 'number') return val.toFixed(3);
+                    if (typeof val === 'boolean') return val.toString();
+                    if (typeof val === 'string' && val.trim() !== '') return val;
+                    return "N/A"; // Use empty string for N/A or missing data
+                });
+
+                // Only add a row if this run has at least one metric value at this point
+                if (metricValues.some(v => v !== '')) {
+                    rows.push([`"${runName}"`, `"${sessionName}"`, xVal, timestamp, ...metricValues].join(","));
+                }
+            }
+        }
+
+        csvContent += rows.join("\n");
+
+        navigator.clipboard.writeText(csvContent).then(() => {
+            toast({ title: "Data Extracted", description: `Copied ${rows.length} rows to clipboard.` });
+        }).catch(err => {
+            console.error("Clipboard copy failed:", err);
+            toast({ variant: "destructive", title: "Copy Failed", description: "Could not copy data to clipboard." });
+        });
+
+    }, [
+        chartComponentRef,
+        processedChartData.fullDataForDetails,
+        xAxisKey,
+        selectedRunIds,
+        runs,
+        sessionNameMap,
+        selectedMetrics,
+        allAvailableMetrics,
+        toast
+    ]);
+
+    useEffect(() => {
+        // Reset zoom if the map or x-axis key changes
+        chartComponentRef.current?.resetZoom();
+    }, [selectedMap, xAxisKey]);
 
     // --- Chart Title Logic ---
     const activeSessionNames = Array.from(selectedSessionIds)
@@ -1017,7 +1118,8 @@ export const ChartController = ({
                                 </TooltipTrigger>
                                 <TooltipContent><p>Zoom In Vertically</p></TooltipContent>
                             </Tooltip>
-                            <Tooltip>
+                        </div>
+                        <Tooltip>
                             <TooltipTrigger asChild>
                                 <Button variant="outline" size="sm" onClick={() => setIsTooltipEnabled(!isTooltipEnabled)} className="h-9">
                                     {isTooltipEnabled ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
@@ -1025,14 +1127,13 @@ export const ChartController = ({
                             </TooltipTrigger>
                             <TooltipContent><p>{isTooltipEnabled ? "Hide Tooltip" : "Show Tooltip"}</p></TooltipContent>
                         </Tooltip>
-                        </div>
                         <Tooltip>
                             <TooltipTrigger asChild>
-                                <Button variant="outline" size="sm" onClick={exportChart} className="h-9 text-xs">
-                                    <Download className="h-4 w-4 mr-2" />PNG
+                                <Button variant="outline" size="sm" onClick={handleExtractData} className="h-9">
+                                    <ClipboardCopy className="h-4 w-4" />
                                 </Button>
                             </TooltipTrigger>
-                            <TooltipContent><p>Export Chart as PNG</p></TooltipContent>
+                            <TooltipContent><p>Extract visible data to clipboard</p></TooltipContent>
                         </Tooltip>
                     </div>
 
@@ -1131,7 +1232,7 @@ export const ChartController = ({
                             yRamMax={yRamMax}
                             yLeftMax={yLeftMax}
                             ref={chartComponentRef}
-                            key={selectedMap + xAxisKey + Array.from(selectedSessionIds).join('-')} // Force re-mount on major changes
+                            key={selectedMap + xAxisKey}
                             chartTitle={chartTitle}
                             datasets={chartJsDisplayData.finalDatasets}
                             labels={chartJsDisplayData.finalLabels}
@@ -1144,6 +1245,8 @@ export const ChartController = ({
                             fullDataForDetails={processedChartData.fullDataForDetails}
                             hiddenDatasetLabels={hiddenDatasetLabels}
                             isTooltipEnabled={isTooltipEnabled}
+                            chartZoom={chartZoom}
+                            setChartZoom={setChartZoom}
                         />
                             {/* VVV NEW LEGEND REDESIGN VVV */}
                             {selectedSessionMetas.length > 0 && selectedMetricMetas.length > 0 && (

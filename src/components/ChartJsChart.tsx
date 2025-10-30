@@ -11,7 +11,6 @@ import {
   Legend,
   TimeScale, // Import TimeScale
   type ChartOptions,
-  type InteractionMode,
   type ChartData,
   type Point, // Import Point type
   type InteractionItem, // Import InteractionItem for onClick
@@ -41,6 +40,10 @@ ChartJS.register(
 );
 
 // --- Types ---
+interface ChartZoomState {
+  xMin: number | null;
+  xMax: number | null;
+}
 
 interface ChartJsChartProps {
   chartTitle: string;
@@ -57,6 +60,8 @@ interface ChartJsChartProps {
   yRamMax?: number;
   yLeftMax?: number;
   isTooltipEnabled: boolean;
+  chartZoom: ChartZoomState; // <-- ADDED
+  setChartZoom: (zoom: ChartZoomState) => void; // <-- ADDED
 }
 
 // Helper function to create or get the tooltip element
@@ -128,6 +133,7 @@ const formatValue = (value: number | null | undefined): string => {
 
 export interface ChartJsChartHandle {
   resetZoom: () => void;
+  getZoomRange: () => { xMin: number | undefined, xMax: number | undefined };
 }
 
 // --- Chart Component ---
@@ -144,7 +150,9 @@ export const ChartJsChart = forwardRef<ChartJsChartHandle, ChartJsChartProps>(({
   hiddenDatasetLabels,
   yRamMax,
   yLeftMax,
-  isTooltipEnabled
+  isTooltipEnabled,
+  chartZoom,
+  setChartZoom,
 }, ref) => {
   const chartRef = useRef<ChartJS<"line", (number | Point | null)[], number | string> | null>(null);
   const { theme } = useTheme(); // Get current theme
@@ -154,6 +162,14 @@ export const ChartJsChart = forwardRef<ChartJsChartHandle, ChartJsChartProps>(({
   useImperativeHandle(ref, () => ({
     resetZoom: () => {
       chartRef.current?.resetZoom();
+    },
+    getZoomRange: () => {
+      const chart = chartRef.current;
+      if (!chart) return { xMin: undefined, xMax: undefined };
+      return {
+        xMin: chart.scales.x.min,
+        xMax: chart.scales.x.max,
+      };
     }
   }));
 
@@ -200,7 +216,6 @@ export const ChartJsChart = forwardRef<ChartJsChartHandle, ChartJsChartProps>(({
 
     // Set Text
     if (tooltip.body) {
-      const tableHead = document.createElement('thead');
       const { chart, tooltip } = context;
       const tooltipEl = getOrCreateTooltip(chart);
 
@@ -359,54 +374,61 @@ export const ChartJsChart = forwardRef<ChartJsChartHandle, ChartJsChartProps>(({
         tableRoot?.appendChild(tableBody);
       }
 
-      // Positioning
       const { offsetLeft: positionX, offsetTop: positionY } = chart.canvas;
-      const canvasHeight = chart.canvas.height / chart.currentDevicePixelRatio; // Adjust for device pixel ratio
-      const canvasWidth = chart.canvas.width / chart.currentDevicePixelRatio; // Adjust for device pixel ratio
+      const canvasHeight = chart.canvas.height / chart.currentDevicePixelRatio;
+      const canvasWidth = chart.canvas.width / chart.currentDevicePixelRatio;
 
       tooltipEl.style.opacity = '1';
       tooltipEl.style.padding = tooltip.options.padding + 'px ' + tooltip.options.padding + 'px';
 
-      // Calculate position relative to canvas, adjusted for potential scaling
-      let caretX = tooltip.caretX;
-      let caretY = tooltip.caretY;
-
-      // Prevent tooltip going off screen - Adjust positioning slightly
       const tooltipWidth = tooltipEl.offsetWidth;
       const tooltipHeight = tooltipEl.offsetHeight;
-      let newX = positionX + caretX;
-      let newY = positionY + caretY;
+      const caretX = tooltip.caretX;
+      const caretY = tooltip.caretY;
+      const margin = 60; // Horizontal margin
 
-      // Default transform
-      let transformX = '-50%';
-      let transformY = '0%'; // Position below caret by default
+      let newX = 0;
+      let newY = 0;
+      let transformX = '0%';
+      let transformY = '0%';
 
-      // Adjust horizontal position
-      if (caretX < tooltipWidth / 2) { // Too close to left edge
-        transformX = '0%'; // Align left edge of tooltip with caret
-        newX = positionX + caretX + 5; // Add small offset
-      } else if (caretX > canvasWidth - tooltipWidth / 2) { // Too close to right edge
-        transformX = '-100%'; // Align right edge of tooltip with caret
-        newX = positionX + caretX - 5; // Add small offset
-      } else {
-        // Default centered horizontal position is fine
-        newX = positionX + caretX;
+      // --- Horizontal Positioning (Left/Right) ---
+      // Try to position to the right first
+      newX = positionX + caretX + margin;
+      transformX = '0%'; // Align left edge of tooltip
+
+      // Check if it goes off the right edge of the canvas
+      if (newX + tooltipWidth > positionX + canvasWidth) {
+        // Flip to the left side
+        newX = positionX + caretX - margin;
+        transformX = '-100%'; // Align right edge of tooltip
       }
 
-      // Adjust vertical position (place above if near bottom edge)
-      if (caretY > canvasHeight - tooltipHeight - 15) { // If caret + tooltip height exceeds canvas height (with margin)
-        transformY = '-100%'; // Align bottom edge of tooltip above caret
-        newY = positionY + caretY - 15; // Move slightly above caret
-      } else {
-        transformY = '0%'; // Align top edge below caret
-        newY = positionY + caretY + 15; // Move slightly below caret
+      // --- Vertical Positioning (Try to center, but pin to edges) ---
+      newY = positionY + caretY;
+      transformY = '-50%'; // Try to center vertically
+
+      const topEdge = newY - (tooltipHeight / 2);
+      const bottomEdge = newY + (tooltipHeight / 2);
+
+      if (topEdge < positionY) {
+        // Goes off top: Pin to top
+        newY = positionY;
+        transformY = '0%';
+      } else if (bottomEdge > positionY + canvasHeight) {
+        // Goes off bottom: Pin to bottom
+        newY = positionY + canvasHeight;
+        transformY = '-100%';
       }
 
       tooltipEl.style.left = newX + 'px';
       tooltipEl.style.top = newY + 'px';
       tooltipEl.style.transform = `translate(${transformX}, ${transformY})`;
 
-      tooltipEl.style.transform = `translate(${transformX}, ${transformY})`;
+
+
+      tooltipEl.style.opacity = '1';
+      tooltipEl.style.padding = tooltip.options.padding + 'px ' + tooltip.options.padding + 'px';
     }
   }, [
     debouncedTheme, // for colors
@@ -464,8 +486,8 @@ export const ChartJsChart = forwardRef<ChartJsChartHandle, ChartJsChartProps>(({
       },
       scales: {
         x: {
-          max: xMax,
-          min: xMin,
+          max: chartZoom.xMax ?? xMax,
+          min: chartZoom.xMin ?? xMin,
           type: 'linear',
           position: 'bottom',
           title: {
@@ -567,6 +589,18 @@ export const ChartJsChart = forwardRef<ChartJsChartHandle, ChartJsChartProps>(({
             },
             mode: 'x',
           },
+          onZoomComplete: ({ chart }: { chart: ChartJS }) => {
+            setChartZoom({
+              xMin: chart.scales.x.min,
+              xMax: chart.scales.x.max,
+            });
+          },
+          onPanComplete: ({ chart }: { chart: ChartJS }) => {
+            setChartZoom({
+              xMin: chart.scales.x.min,
+              xMax: chart.scales.x.max,
+            });
+          },
         },
         annotation: {
           annotations: [...eventAnnotations, ...burstAnnotations],
@@ -633,7 +667,9 @@ export const ChartJsChart = forwardRef<ChartJsChartHandle, ChartJsChartProps>(({
     debouncedTheme,
     labels,
     isTooltipEnabled,
-    throttledExternalTooltipHandler
+    throttledExternalTooltipHandler,
+    chartZoom, // <-- ADDED
+    setChartZoom // <-- ADDED
   ]);
 
   useEffect(() => {
@@ -662,11 +698,6 @@ export const ChartJsChart = forwardRef<ChartJsChartHandle, ChartJsChartProps>(({
     }
 
   }, [hiddenDatasetLabels, datasets]);
-
-  // Effect to reset zoom/pan when data fundamentally changes
-  useEffect(() => {
-    chartRef.current?.resetZoom();
-  }, [datasets, labels]);
 
   return (
     <div style={{ height: `${chartHeight}px`, width: "100%", position: 'relative' }} id="chartjs-container"> {/* Add position relative */}

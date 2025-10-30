@@ -186,11 +186,14 @@ self.onmessage = (e: MessageEvent<ProcessChartDataMessage>) => {
 
         mergedEntry[`${baseRunPrefix}:TIMESTAMP`] = baseEntry.TIMESTAMP;
 
-        selectedMetricKeys.forEach((metricKey) => {
+        // --- MODIFICATION: Add ALL available metrics, not just selected ones ---
+        baseRun.availableMetrics.forEach((metric) => {
+          const metricKey = metric.key;
           if (baseEntry[metricKey] !== undefined) {
             mergedEntry[`${baseRunPrefix}:${metricKey}`] = baseEntry[metricKey];
           }
         });
+        // --- END MODIFICATION ---
 
         if (baseEntry['BURST_LOGGING_STATUS'] !== undefined) {
           mergedEntry[`${baseRunPrefix}:BURST_LOGGING_STATUS`] = baseEntry['BURST_LOGGING_STATUS'];
@@ -213,11 +216,16 @@ self.onmessage = (e: MessageEvent<ProcessChartDataMessage>) => {
           if (closestIndex !== -1) {
             const closestEntry = otherRun.performanceLogs[closestIndex];
             const otherRunPrefix = otherRun.id;
-            selectedMetricKeys.forEach((metricKey) => {
+
+            // --- MODIFICATION: Add ALL available metrics, not just selected ones ---
+            otherRun.availableMetrics.forEach((metric) => {
+              const metricKey = metric.key;
               if (closestEntry[metricKey] !== undefined) {
                 mergedEntry[`${otherRunPrefix}:${metricKey}`] = closestEntry[metricKey];
               }
             });
+            // --- END MODIFICATION ---
+
             // Also copy burst status if present
             if (closestEntry['BURST_LOGGING_STATUS'] !== undefined){
                  mergedEntry[`${otherRunPrefix}:BURST_LOGGING_STATUS`] = closestEntry['BURST_LOGGING_STATUS'];
@@ -254,7 +262,7 @@ self.onmessage = (e: MessageEvent<ProcessChartDataMessage>) => {
       const chartJsDatasets: ChartJsWorkerDataset = {};
 
       activeRuns.forEach(run => {
-        selectedMetricKeys.forEach(metricKey => {
+        selectedMetricKeys.forEach(metricKey => { // This is still correct, we only *plot* selected metrics
           const dataKey = `${run.id}:${metricKey}`;
           // Map downsampled data to {x, y} format for this specific series
           chartJsDatasets[dataKey] = downsampledResult.map(entry => {
@@ -288,4 +296,3 @@ self.onmessage = (e: MessageEvent<ProcessChartDataMessage>) => {
 
 // Export {} to make it a module (necessary for TypeScript workers)
 export { };
-

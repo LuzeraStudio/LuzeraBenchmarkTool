@@ -7,6 +7,11 @@ const MAX_CHART_HEIGHT = 800;
 const HEIGHT_STEP = 50;
 const DEFAULT_CHART_HEIGHT = 400;
 
+interface ChartZoomState {
+  xMin: number | null;
+  xMax: number | null;
+}
+
 interface ChartSettings {
   selectedMap: string;
   selectedMetrics: Set<string>; // Use Set internally for easier management
@@ -15,6 +20,7 @@ interface ChartSettings {
   isInitialSessionLoadDone: boolean;
   chartHeight: number;
   isTooltipEnabled: boolean; // <-- ADDED
+  chartZoom: ChartZoomState;
 }
 
 interface ChartSettingsContextType extends ChartSettings {
@@ -25,6 +31,7 @@ interface ChartSettingsContextType extends ChartSettings {
   setIsInitialSessionLoadDone: (done: boolean) => void;
   setChartHeight: (height: number | ((prevHeight: number) => number)) => void;
   setIsTooltipEnabled: (enabled: boolean) => void; // <-- ADDED
+  setChartZoom: (zoom: ChartZoomState) => void;
 }
 
 const defaultSettings: ChartSettings = {
@@ -35,6 +42,7 @@ const defaultSettings: ChartSettings = {
   isInitialSessionLoadDone: false,
   chartHeight: DEFAULT_CHART_HEIGHT,
   isTooltipEnabled: true, // <-- ADDED
+  chartZoom: { xMin: null, xMax: null },
 };
 
 // Create the context with a default value (will be overridden by Provider)
@@ -49,11 +57,12 @@ export const ChartSettingsProvider = ({ children }: { children: ReactNode }) => 
   const [isInitialSessionLoadDone, setIsInitialSessionLoadDone] = useState<boolean>(defaultSettings.isInitialSessionLoadDone);
   const [chartHeight, setChartHeight] = useState<number>(defaultSettings.chartHeight);
   const [isTooltipEnabled, setIsTooltipEnabled] = useState<boolean>(defaultSettings.isTooltipEnabled); // <-- ADDED
+  const [chartZoom, setChartZoom] = useState<ChartZoomState>(defaultSettings.chartZoom); // <-- ADDED
 
   const updateChartHeight = useCallback((newHeightOrFn: number | ((prevHeight: number) => number)) => {
     setChartHeight(prev => {
-       const newHeight = typeof newHeightOrFn === 'function' ? newHeightOrFn(prev) : newHeightOrFn;
-       return Math.max(MIN_CHART_HEIGHT, Math.min(MAX_CHART_HEIGHT, newHeight));
+      const newHeight = typeof newHeightOrFn === 'function' ? newHeightOrFn(prev) : newHeightOrFn;
+      return Math.max(MIN_CHART_HEIGHT, Math.min(MAX_CHART_HEIGHT, newHeight));
     });
   }, []);
 
@@ -66,14 +75,16 @@ export const ChartSettingsProvider = ({ children }: { children: ReactNode }) => 
     isInitialSessionLoadDone,
     chartHeight,
     isTooltipEnabled, // <-- ADDED
+    chartZoom,
     setSelectedMap,
     setSelectedMetrics,
     setXAxisKey,
     setSelectedSessionIds,
     setIsInitialSessionLoadDone,
-    setChartHeight : updateChartHeight,
+    setChartHeight: updateChartHeight,
     setIsTooltipEnabled, // <-- ADDED
-  }), [selectedMap, selectedMetrics, xAxisKey, selectedSessionIds, isInitialSessionLoadDone, chartHeight, isTooltipEnabled]); // <-- ADDED DEPENDENCY
+    setChartZoom,
+  }), [selectedMap, selectedMetrics, xAxisKey, selectedSessionIds, isInitialSessionLoadDone, chartHeight, isTooltipEnabled, chartZoom]); // <-- ADDED DEPENDENCY
 
   return (
     <ChartSettingsContext.Provider value={value}>
@@ -92,7 +103,7 @@ export const useChartSettings = (): ChartSettingsContextType => {
 };
 
 export {
-    MIN_CHART_HEIGHT,
-    MAX_CHART_HEIGHT,
-    HEIGHT_STEP
+  MIN_CHART_HEIGHT,
+  MAX_CHART_HEIGHT,
+  HEIGHT_STEP
 };
