@@ -1,3 +1,5 @@
+// src/workers/parser.worker.ts
+
 /// <reference lib="webworker" />
 import Papa from "papaparse";
 import type {
@@ -83,7 +85,11 @@ self.onmessage = async (
     maps: {},
   };
 
-  const tempEvents: { mapName: string | null; events: BenchmarkEvent[] }[] = [];
+  // Store runs by their *full path prefix* (e.g., "2025-10-22_14-38-18/Demo" or just "Demo")
+  const runsByPathPrefix = new Map<string, BenchmarkRun>();
+  const mapNameToRuns = new Map<string, BenchmarkRun[]>();
+
+  const tempEvents: { pathPrefix: string | null; events: BenchmarkEvent[]; fileName: string }[] = [];
 
   const processingErrors: { file: string; error: string }[] = [];
   let filesProcessedCount = 0;
@@ -91,66 +97,110 @@ self.onmessage = async (
   for (const file of files) {
     try {
       const content = await file.text();
+      // Use the full relative path provided by the browser
+      const relativePath = file.webkitRelativePath || file.name;
       const fileName = file.name;
       const fileNameLower = fileName.toLowerCase();
 
       if (fileNameLower.includes("staticdata")) {
-        newSessionData.staticData = parseStaticData(content);
+        // StaticData can be at the root or in a subfolder.
+        // We'll just take the *first* one we find for the whole session.
+        if (!newSessionData.staticData) {
+          newSessionData.staticData = parseStaticData(content);
+        }
         filesProcessedCount++;
-      } else if (fileNameLower.includes("performancelog")) {
-        const match = fileName.match(/^(.+?)-PerformanceLog\.csv$/i);
-        const mapName = match ? match[1] : "UnknownMap";
 
-        if (!newSessionData.maps[mapName]) {
-          newSessionData.maps[mapName] = [];
+      } else if (fileNameLower.includes("performancelog")) {
+        // This regex now handles both:
+        // 1. "Demo-PerformanceLog.csv" (folderPath=undefined, mapAndRunName="Demo")
+        // 2. "2025-10-22_14-38-18/Demo-PerformanceLog.csv" (folderPath="2025-10-22_14-38-18", mapAndRunName="Demo")
+        const match = relativePath.match(/^(?:(.*)\/)?([^/]+?)-PerformanceLog\.csv$/i);
+
+        if (match) {
+          const folderPath = match[1]; // e.g., "2025-10-22_14-38-18" or undefined
+          const mapAndRunName = match[2]; // e.g., "Demo" or "Demo-Run1"
+
+          // pathPrefix: "2025-10-22_14-38-18/Demo" or "Demo"
+          const pathPrefix = folderPath ? `${folderPath}/${mapAndRunName}` : mapAndRunName;
+          // mapName: "Demo" (for grouping in UI)
+          const mapName = mapAndRunName.replace(/-Run\d+$/i, "");
+          // runName: "2025-10-22_14-38-18 - Demo" or "Demo" (for display)
+          const runName = folderPath ? `${folderPath} - ${mapAndRunName}` : mapAndRunName;
+
+          if (!mapNameToRuns.has(mapName)) {
+            mapNameToRuns.set(mapName, []);
+          }
+
+          const perfLogs = parseCSV<PerformanceLogEntry>(content);
+          const metrics = discoverMetrics(perfLogs);
+
+          const run: BenchmarkRun = {
+            id: `${sessionId}-${relativePath}`, // Unique ID for React
+            sessionId: sessionId,
+            name: runName, // Unique display name
+            performanceLogs: perfLogs,
+            events: [],
+            availableMetrics: metrics,
+          };
+
+          mapNameToRuns.get(mapName)!.push(run);
+          runsByPathPrefix.set(pathPrefix, run); // Store by unique path key
+          filesProcessedCount++;
         }
 
-        const perfLogs = parseCSV<PerformanceLogEntry>(content);
-        const metrics = discoverMetrics(perfLogs);
-
-        const run: BenchmarkRun = {
-          id: `${sessionId}-${fileName}`,
-          sessionId: sessionId,
-          name: fileName.replace(/-PerformanceLog\.csv$/i, ""),
-          performanceLogs: perfLogs,
-          events: [],
-          availableMetrics: metrics,
-        };
-
-        newSessionData.maps[mapName].push(run);
-        filesProcessedCount++;
       } else if (fileNameLower.includes("events")) {
-        const match = fileName.match(/^(.+?)-Events\.csv$/i);
-        const mapName = match ? match[1] : null;
-        const parsedEvents = parseCSV<BenchmarkEvent>(content);
-        filesProcessedCount++;
+        // Handles "Demo-Events.csv" or "2025-10-22_14-38-18/Demo-Events.csv"
+        const match = relativePath.match(/^(?:(.*)\/)?([^/]+?)-Events\.csv$/i);
+        if (match) {
+          const folderPath = match[1];
+          const mapAndRunName = match[2];
+          
+          // pathPrefix: "2025-10-22_14-38-18/Demo" or "Demo"
+          const pathPrefix = folderPath ? `${folderPath}/${mapAndRunName}` : mapAndRunName;
 
-        tempEvents.push({ mapName, events: parsedEvents });
+          const parsedEvents = parseCSV<BenchmarkEvent>(content);
+          filesProcessedCount++;
+          tempEvents.push({ pathPrefix: pathPrefix, events: parsedEvents, fileName: relativePath });
+        }
       }
     } catch (err: any) {
-      console.error(`Error processing file ${file.name}:`, err);
+      console.error(`Error processing file ${file.webkitRelativePath || file.name}:`, err);
       processingErrors.push({
-        file: file.name,
+        file: file.webkitRelativePath || file.name,
         error: err.message || "Unknown error",
       });
     }
   }
 
+  // --- Event Association Logic ---
+  // Assign runs to the session maps structure
+  mapNameToRuns.forEach((runs, mapName) => {
+    newSessionData.maps[mapName] = runs;
+  });
+
+  // Now, associate events
   for (const eventData of tempEvents) {
-    const { mapName, events } = eventData;
-    if (mapName && newSessionData.maps[mapName]) {
-      newSessionData.maps[mapName].forEach((run) => {
-        run.events.push(...events);
-      });
-    } else {
-      console.warn(
-        `[DEBUG 2/6] Event file had no map name. Associating ${events.length} events with ALL maps.`,
-      );
-      Object.values(newSessionData.maps).forEach((runs) => {
-        runs.forEach((run) => run.events.push(...events));
-      });
+    const { pathPrefix, events } = eventData;
+    let foundMatch = false;
+
+    if (pathPrefix) {
+      // 1. Try to find a run with the *exact* same path prefix
+      // e.g., "2025-10-22_14-38-18/Demo" or "Demo"
+      const exactMatchRun = runsByPathPrefix.get(pathPrefix);
+      if (exactMatchRun) {
+        exactMatchRun.events.push(...events);
+        foundMatch = true;
+      }
+    }
+
+    // 2. Fallback (should be rare)
+    if (!foundMatch) {
+      console.warn(`[Parser] Event file ${eventData.fileName} had no matching run. Associating with ALL runs.`);
+      runsByPathPrefix.forEach(run => run.events.push(...events));
     }
   }
+
+  // --- End Logic ---
 
   const session: BenchmarkSession = {
     sessionId: sessionId,

@@ -146,13 +146,35 @@ self.onmessage = (e: MessageEvent<ProcessChartDataMessage>) => {
       activeRuns.forEach((run) => {
         if (run.performanceLogs) {
           sortLogs(run.performanceLogs, xAxisKey); // Primary sort for merging/display
-          // Optionally sort a copy by timestamp if event mapping needs it here
         }
       });
 
+      // --- FIX: Identify the run with the largest max X value ---
+      // Helper to get the max X value from a run (since logs are sorted)
+      const getLastXValue = (run: BenchmarkRun): number => {
+        if (!run.performanceLogs || run.performanceLogs.length === 0) {
+          return -Infinity;
+        }
+        const lastEntry = run.performanceLogs[run.performanceLogs.length - 1];
+        const value = lastEntry[xAxisKey] as number; // Use the dynamic xAxisKey
+        return (typeof value === 'number' && !isNaN(value)) ? value : -Infinity;
+      };
+
+      // Find the run with the truly largest X-axis value
+      const baseRun = activeRuns.reduce((a, b) => 
+        getLastXValue(a) > getLastXValue(b) ? a : b
+      );
+      const otherRuns = activeRuns.filter(r => r.id !== baseRun.id);
+      
+      // --- Store max X values for other runs for quick lookup ---
+      const otherRunMaxValues = new Map<string, number>();
+      otherRuns.forEach(run => {
+        otherRunMaxValues.set(run.id, getLastXValue(run));
+      });
+      // --- END FIX ---
+
+
       // 2. Merge Data using Binary Search (Produces fullMergedData: PerformanceLogEntry[])
-      const baseRun = activeRuns[0];
-      const otherRuns = activeRuns.slice(1);
       const fullMergedData: PerformanceLogEntry[] = [];
 
       baseRun.performanceLogs.forEach((baseEntry) => {
@@ -179,6 +201,14 @@ self.onmessage = (e: MessageEvent<ProcessChartDataMessage>) => {
 
         otherRuns.forEach((otherRun) => {
           if (!otherRun.performanceLogs || otherRun.performanceLogs.length === 0) return;
+
+          // --- NEW FIX: Check if baseValue is out of bounds for this otherRun ---
+          const maxOtherRunX = otherRunMaxValues.get(otherRun.id) ?? -Infinity;
+          if (baseValue > maxOtherRunX) {
+            return; // Skip this run, will result in `null` for this point
+          }
+          // --- END NEW FIX ---
+
           const closestIndex = findClosestIndexBinary(otherRun.performanceLogs, baseValue, xAxisKey);
           if (closestIndex !== -1) {
             const closestEntry = otherRun.performanceLogs[closestIndex];
@@ -208,8 +238,9 @@ self.onmessage = (e: MessageEvent<ProcessChartDataMessage>) => {
 
       // 3. Downsample the merged data (Produces downsampledResult: PerformanceLogEntry[])
       let firstValidMetricDataKey: string | undefined = undefined;
-      if (selectedMetricKeys.length > 0 && activeRuns.length > 0) {
-        firstValidMetricDataKey = `${activeRuns[0].id}:${selectedMetricKeys[0]}`;
+      // --- FIX: Use baseRun for finding the first valid key ---
+      if (selectedMetricKeys.length > 0) {
+        firstValidMetricDataKey = `${baseRun.id}:${selectedMetricKeys[0]}`;
       }
       const downsampledResult = downsampleData(
         fullMergedData,
@@ -257,3 +288,4 @@ self.onmessage = (e: MessageEvent<ProcessChartDataMessage>) => {
 
 // Export {} to make it a module (necessary for TypeScript workers)
 export { };
+

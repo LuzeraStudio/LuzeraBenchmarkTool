@@ -14,6 +14,7 @@ interface ChartSettings {
   selectedSessionIds: Set<string>;
   isInitialSessionLoadDone: boolean;
   chartHeight: number;
+  isTooltipEnabled: boolean; // <-- ADDED
 }
 
 interface ChartSettingsContextType extends ChartSettings {
@@ -23,6 +24,7 @@ interface ChartSettingsContextType extends ChartSettings {
   setSelectedSessionIds: (sessionIds: Set<string>) => void;
   setIsInitialSessionLoadDone: (done: boolean) => void;
   setChartHeight: (height: number | ((prevHeight: number) => number)) => void;
+  setIsTooltipEnabled: (enabled: boolean) => void; // <-- ADDED
 }
 
 const defaultSettings: ChartSettings = {
@@ -32,6 +34,7 @@ const defaultSettings: ChartSettings = {
   selectedSessionIds: new Set<string>(),
   isInitialSessionLoadDone: false,
   chartHeight: DEFAULT_CHART_HEIGHT,
+  isTooltipEnabled: true, // <-- ADDED
 };
 
 // Create the context with a default value (will be overridden by Provider)
@@ -45,6 +48,7 @@ export const ChartSettingsProvider = ({ children }: { children: ReactNode }) => 
   const [selectedSessionIds, setSelectedSessionIds] = useState<Set<string>>(defaultSettings.selectedSessionIds);
   const [isInitialSessionLoadDone, setIsInitialSessionLoadDone] = useState<boolean>(defaultSettings.isInitialSessionLoadDone);
   const [chartHeight, setChartHeight] = useState<number>(defaultSettings.chartHeight);
+  const [isTooltipEnabled, setIsTooltipEnabled] = useState<boolean>(defaultSettings.isTooltipEnabled); // <-- ADDED
 
   const updateChartHeight = useCallback((newHeightOrFn: number | ((prevHeight: number) => number)) => {
     setChartHeight(prev => {
@@ -61,13 +65,15 @@ export const ChartSettingsProvider = ({ children }: { children: ReactNode }) => 
     selectedSessionIds,
     isInitialSessionLoadDone,
     chartHeight,
+    isTooltipEnabled, // <-- ADDED
     setSelectedMap,
     setSelectedMetrics,
     setXAxisKey,
     setSelectedSessionIds,
     setIsInitialSessionLoadDone,
     setChartHeight : updateChartHeight,
-  }), [selectedMap, selectedMetrics, xAxisKey, selectedSessionIds, isInitialSessionLoadDone, chartHeight]); // Include setters if they change, though useState setters are stable
+    setIsTooltipEnabled, // <-- ADDED
+  }), [selectedMap, selectedMetrics, xAxisKey, selectedSessionIds, isInitialSessionLoadDone, chartHeight, isTooltipEnabled]); // <-- ADDED DEPENDENCY
 
   return (
     <ChartSettingsContext.Provider value={value}>

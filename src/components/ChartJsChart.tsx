@@ -1,5 +1,5 @@
 // src/components/ChartJsChart.tsx
-import { useRef, useEffect, useMemo, useState, useImperativeHandle, forwardRef } from "react";
+import { useRef, useEffect, useMemo, useState, useImperativeHandle, forwardRef, useCallback } from "react";
 import { Line } from "react-chartjs-2";
 import {
   Chart as ChartJS,
@@ -15,7 +15,8 @@ import {
   type ChartData,
   type Point, // Import Point type
   type InteractionItem, // Import InteractionItem for onClick
-  Scale, // Import Scale type
+  Scale,
+  type TooltipItem, // Import Scale type
 } from "chart.js";
 import zoomPlugin from "chartjs-plugin-zoom";
 import annotationPlugin, { type AnnotationOptions } from "chartjs-plugin-annotation";
@@ -24,6 +25,7 @@ import { useTheme } from "@/contexts/ThemeContext"; // For theme-aware colors
 import 'chartjs-adapter-date-fns'; // Import date adapter
 import { getComputedColor } from "@/lib/colorUtils";
 import { findClosestDataIndexBinarySearch } from "@/lib/utils";
+import { useThrottle } from "@/hooks/useThrottle";
 
 // Register Chart.js components and plugins
 ChartJS.register(
@@ -54,6 +56,7 @@ interface ChartJsChartProps {
   hiddenDatasetLabels: Set<string>;
   yRamMax?: number;
   yLeftMax?: number;
+  isTooltipEnabled: boolean;
 }
 
 // Helper function to create or get the tooltip element
@@ -111,6 +114,18 @@ const getOrCreateTooltip = (chart: ChartJS) => {
   return tooltipEl as HTMLDivElement;
 };
 
+const formatValue = (value: number | null | undefined): string => {
+  if (value === null || value === undefined) {
+    return 'N/A';
+  }
+  // Check if it's an integer
+  if (value % 1 === 0) {
+    return value.toString();
+  }
+  // Otherwise, format as float
+  return value.toFixed(2);
+};
+
 export interface ChartJsChartHandle {
   resetZoom: () => void;
 }
@@ -129,6 +144,7 @@ export const ChartJsChart = forwardRef<ChartJsChartHandle, ChartJsChartProps>(({
   hiddenDatasetLabels,
   yRamMax,
   yLeftMax,
+  isTooltipEnabled
 }, ref) => {
   const chartRef = useRef<ChartJS<"line", (number | Point | null)[], number | string> | null>(null);
   const { theme } = useTheme(); // Get current theme
@@ -163,11 +179,277 @@ export const ChartJsChart = forwardRef<ChartJsChartHandle, ChartJsChartProps>(({
     datasets: datasets,
   }), [labels, datasets]);
 
+  const externalTooltipHandler = useCallback((context: any) => { // 'any' is fine here
+    const { chart, tooltip } = context;
+    const tooltipEl = getOrCreateTooltip(chart);
+
+    // --- Update styles based on theme ---
+    tooltipEl.style.background = tooltipBgColor;
+    tooltipEl.style.color = titleColor;
+    tooltipEl.style.borderColor = gridColor;
+    // ---
+
+    const badgeEl = tooltipEl.querySelector<HTMLDivElement>('#chartjs-tooltip-badge');
+
+    // Hide if no tooltip
+    if (tooltip.opacity === 0 || !isTooltipEnabled) {
+      tooltipEl.style.opacity = '0';
+      if (badgeEl) badgeEl.style.visibility = 'hidden'; // Hide badge too
+      return;
+    }
+
+    // Set Text
+    if (tooltip.body) {
+      const tableHead = document.createElement('thead');
+      const { chart, tooltip } = context;
+      const tooltipEl = getOrCreateTooltip(chart);
+
+      // --- Update styles based on theme ---
+      tooltipEl.style.background = tooltipBgColor;
+      tooltipEl.style.color = titleColor;
+      tooltipEl.style.borderColor = gridColor;
+      // ---
+
+      const badgeEl = tooltipEl.querySelector<HTMLDivElement>('#chartjs-tooltip-badge');
+
+      // Hide if no tooltip
+      if (tooltip.opacity === 0) {
+        tooltipEl.style.opacity = '0';
+        if (badgeEl) badgeEl.style.visibility = 'hidden'; // Hide badge too
+        return;
+      }
+
+      // Set Text
+      if (tooltip.body) {
+        const tableHead = document.createElement('thead');
+        const titleRow = document.createElement('tr');
+        const titleTh = document.createElement('th');
+        titleTh.style.textAlign = 'left';
+        titleTh.style.fontWeight = '600'; // font-semibold
+        titleTh.style.paddingBottom = '0.5rem'; // mb-2
+        titleTh.style.color = titleColor; // Use dynamic color from options
+
+        // ---- Process data points for table ----
+        const metricsData = new Map<string, Record<string, { value: number | null, color: string }>>();
+        const sessionNamesSet = new Set<string>();
+
+        tooltip.dataPoints.forEach((dataPoint: TooltipItem<'line'>) => {
+          const datasetLabel = dataPoint.dataset.label || 'Unknown';
+          // Prevent processing internal/highlight datasets
+          if (datasetLabel.includes('Burst Logging')) return;
+
+          const parts = datasetLabel.split(" - ");
+          const sessionName = parts[0] || "Unknown";
+          const metricLabel = parts.slice(1).join(" - ") || dataPoint.datasetIndex.toString();
+          const value = dataPoint.parsed.y;
+          const color = dataPoint.dataset.borderColor as string || titleColor; // Fallback color
+
+          sessionNamesSet.add(sessionName);
+
+          if (!metricsData.has(metricLabel)) {
+            metricsData.set(metricLabel, {});
+          }
+          metricsData.get(metricLabel)![sessionName] = { value, color };
+        });
+
+        const orderedSessionNames = Array.from(sessionNamesSet).sort();
+        const orderedMetricLabels = Array.from(metricsData.keys()).sort();
+        // ---- END Process ----
+
+        // Set Title (X-axis value)
+        const firstDataPoint = tooltip.dataPoints[0];
+        const xValue = firstDataPoint?.parsed?.x;
+        titleTh.innerText = `${xAxisKey === 'TIMESTAMP' ? 'Time' : 'Distance'}: ${xValue?.toFixed(2) ?? 'N/A'}`;
+        // Set colspan dynamically based on number of sessions + metric column
+        titleTh.colSpan = orderedSessionNames.length + 1;
+
+        titleRow.appendChild(titleTh);
+        tableHead.appendChild(titleRow);
+
+        const tableBody = document.createElement('tbody');
+
+        // Create Header Row for Sessions
+        const headerRow = document.createElement('tr');
+        const metricHeaderTh = document.createElement('th');
+        metricHeaderTh.innerText = 'Metric';
+        metricHeaderTh.style.textAlign = 'left';
+        metricHeaderTh.style.fontWeight = '500'; // font-medium
+        metricHeaderTh.style.color = tickColor; // Use tick color for headers
+        metricHeaderTh.style.paddingRight = '0.5rem'; // pr-2
+        headerRow.appendChild(metricHeaderTh);
+
+        orderedSessionNames.forEach(sessionName => {
+          const sessionHeaderTh = document.createElement('th');
+          sessionHeaderTh.innerText = sessionName;
+          sessionHeaderTh.style.textAlign = 'right';
+          sessionHeaderTh.style.fontWeight = '500';
+          sessionHeaderTh.style.color = tickColor;
+          sessionHeaderTh.style.paddingLeft = '0.5rem';
+          sessionHeaderTh.style.paddingRight = '0.5rem';
+          headerRow.appendChild(sessionHeaderTh);
+        });
+        tableBody.appendChild(headerRow);
+
+        // Create Data Rows for Metrics
+        orderedMetricLabels.forEach(metricLabel => {
+          const dataRow = document.createElement('tr');
+          const metricTd = document.createElement('td');
+          metricTd.innerText = metricLabel;
+          metricTd.style.textAlign = 'left';
+          metricTd.style.fontWeight = '600';
+          metricTd.style.paddingRight = '0.5rem';
+          metricTd.style.whiteSpace = 'nowrap';
+          dataRow.appendChild(metricTd);
+
+          orderedSessionNames.forEach(sessionName => {
+            const valueTd = document.createElement('td');
+            const metricSessionData = metricsData.get(metricLabel)?.[sessionName];
+            valueTd.innerText = metricSessionData?.value !== null && metricSessionData?.value !== undefined
+              ? formatValue(metricSessionData?.value)
+              : 'N/A';
+            valueTd.style.textAlign = 'center';
+            valueTd.style.fontWeight = '600';
+            valueTd.style.color = metricSessionData?.color || titleColor; // Use series color
+            valueTd.style.paddingLeft = '0.5rem';
+            valueTd.style.paddingRight = '0.5rem';
+            dataRow.appendChild(valueTd);
+          });
+          tableBody.appendChild(dataRow);
+        });
+
+        // --- Check for Burst Logging ---
+        let isBursting = false;
+        // Ensure we have data points and full data to check against
+        if (tooltip.dataPoints.length > 0 && fullDataForDetails && fullDataForDetails.length > 0) {
+          const firstPoint = tooltip.dataPoints[0];
+          const xValue = firstPoint.parsed?.x;
+
+          // Only proceed if xValue is a valid number
+          if (typeof xValue === 'number' && !isNaN(xValue)) {
+            // Optimization: Map only if needed or consider pre-sorting/mapping fullDataForDetails if performance is an issue
+            const sortedXValues = fullDataForDetails.map(d => d[xAxisKey] as number).filter(v => typeof v === 'number'); // Filter out non-numbers during mapping
+
+            const closestDataIndex = findClosestDataIndexBinarySearch(sortedXValues, xValue);
+
+            if (closestDataIndex !== -1) {
+              // Find the actual full data point corresponding to the index in the potentially filtered sortedXValues
+              // This requires finding the point in the *original* fullDataForDetails that matches the x-value found
+              const targetX = sortedXValues[closestDataIndex]; // The closest X value we found
+              const fullDataPoint = fullDataForDetails.find(d => (d[xAxisKey] as number) === targetX); // Find the exact point
+
+              // Check if *any* runId associated with this point has burst status true
+              if (fullDataPoint) { // Check if find was successful
+                isBursting = Object.keys(fullDataPoint).some(key =>
+                  key.endsWith(':BURST_LOGGING_STATUS') && (fullDataPoint[key] === true || String(fullDataPoint[key]).toLowerCase() === 'true')
+                );
+              }
+            }
+          }
+        }
+        // Show/Hide Badge based on burst status
+        if (badgeEl) badgeEl.style.visibility = isBursting ? 'visible' : 'hidden';
+
+
+        const tableRoot = tooltipEl.querySelector('table');
+        // Clear and rebuild table
+        while (tableRoot?.firstChild) {
+          tableRoot.firstChild.remove();
+        }
+        tableRoot?.appendChild(tableHead);
+        tableRoot?.appendChild(tableBody);
+      }
+
+      // Positioning
+      const { offsetLeft: positionX, offsetTop: positionY } = chart.canvas;
+      const canvasHeight = chart.canvas.height / chart.currentDevicePixelRatio; // Adjust for device pixel ratio
+      const canvasWidth = chart.canvas.width / chart.currentDevicePixelRatio; // Adjust for device pixel ratio
+
+      tooltipEl.style.opacity = '1';
+      tooltipEl.style.padding = tooltip.options.padding + 'px ' + tooltip.options.padding + 'px';
+
+      // Calculate position relative to canvas, adjusted for potential scaling
+      let caretX = tooltip.caretX;
+      let caretY = tooltip.caretY;
+
+      // Prevent tooltip going off screen - Adjust positioning slightly
+      const tooltipWidth = tooltipEl.offsetWidth;
+      const tooltipHeight = tooltipEl.offsetHeight;
+      let newX = positionX + caretX;
+      let newY = positionY + caretY;
+
+      // Default transform
+      let transformX = '-50%';
+      let transformY = '0%'; // Position below caret by default
+
+      // Adjust horizontal position
+      if (caretX < tooltipWidth / 2) { // Too close to left edge
+        transformX = '0%'; // Align left edge of tooltip with caret
+        newX = positionX + caretX + 5; // Add small offset
+      } else if (caretX > canvasWidth - tooltipWidth / 2) { // Too close to right edge
+        transformX = '-100%'; // Align right edge of tooltip with caret
+        newX = positionX + caretX - 5; // Add small offset
+      } else {
+        // Default centered horizontal position is fine
+        newX = positionX + caretX;
+      }
+
+      // Adjust vertical position (place above if near bottom edge)
+      if (caretY > canvasHeight - tooltipHeight - 15) { // If caret + tooltip height exceeds canvas height (with margin)
+        transformY = '-100%'; // Align bottom edge of tooltip above caret
+        newY = positionY + caretY - 15; // Move slightly above caret
+      } else {
+        transformY = '0%'; // Align top edge below caret
+        newY = positionY + caretY + 15; // Move slightly below caret
+      }
+
+      tooltipEl.style.left = newX + 'px';
+      tooltipEl.style.top = newY + 'px';
+      tooltipEl.style.transform = `translate(${transformX}, ${transformY})`;
+
+      tooltipEl.style.transform = `translate(${transformX}, ${transformY})`;
+    }
+  }, [
+    debouncedTheme, // for colors
+    tooltipBgColor,
+    titleColor,
+    gridColor,
+    tickColor,
+    xAxisKey,
+    fullDataForDetails,
+    isTooltipEnabled
+  ]);
+
+  // Wrap the handler with throttle. (50ms is a good balance)
+  const throttledExternalTooltipHandler = useThrottle(externalTooltipHandler, 50);
+
   // Define chart options, including zoom, tooltip, annotations, axes
   const options: ChartOptions<"line"> = useMemo(() => {
 
-    const xMax = labels.length > 0 ? (labels[labels.length - 1] as number) : undefined;
-    const xMin = labels.length > 0 ? (labels[0] as number) : undefined; // Get the min value
+    let xMinFound = Infinity;
+    let xMaxFound = -Infinity;
+    let hasData = false;
+
+    datasets.forEach(dataset => {
+      if (dataset.data && dataset.data.length > 0) {
+        // Check first point for min
+        // Data is already {x, y} points from the worker
+        const firstPoint = dataset.data[0];
+        if (firstPoint && typeof firstPoint === 'object' && firstPoint.x !== null && typeof firstPoint.x === 'number') {
+          if (firstPoint.x < xMinFound) xMinFound = firstPoint.x;
+          hasData = true;
+        }
+
+        // Check last point for max
+        const lastPoint = dataset.data[dataset.data.length - 1];
+        if (lastPoint && typeof lastPoint === 'object' && lastPoint.x !== null && typeof lastPoint.x === 'number') {
+          if (lastPoint.x > xMaxFound) xMaxFound = lastPoint.x;
+          hasData = true;
+        }
+      }
+    });
+
+    const xMin = hasData ? xMinFound : undefined;
+    const xMax = hasData ? xMaxFound : undefined;
 
     return {
       maintainAspectRatio: false,
@@ -177,8 +459,8 @@ export const ChartJsChart = forwardRef<ChartJsChartHandle, ChartJsChartProps>(({
       normalized: true,
       spanGaps: false,
       interaction: {
-        mode: 'index' as InteractionMode,
-        intersect: false,
+        mode: isTooltipEnabled ? 'index' : undefined,
+        intersect: isTooltipEnabled ? false : undefined,
       },
       scales: {
         x: {
@@ -261,219 +543,11 @@ export const ChartJsChart = forwardRef<ChartJsChartHandle, ChartJsChartProps>(({
           enabled: false, // Disable the default internal tooltip
           mode: 'index', // Keep mode and intersect for hover behavior
           intersect: false,
-          position: 'nearest', // Helps determine positioning
-          external: (context) => { // Use external tooltip
-            const { chart, tooltip } = context;
-            const tooltipEl = getOrCreateTooltip(chart);
-
-            // --- Update styles based on theme ---
-            tooltipEl.style.background = tooltipBgColor;
-            tooltipEl.style.color = titleColor;
-            tooltipEl.style.borderColor = gridColor;
-            // ---
-
-            const badgeEl = tooltipEl.querySelector<HTMLDivElement>('#chartjs-tooltip-badge');
-
-            // Hide if no tooltip
-            if (tooltip.opacity === 0) {
-              tooltipEl.style.opacity = '0';
-              if (badgeEl) badgeEl.style.visibility = 'hidden'; // Hide badge too
-              return;
-            }
-
-            // Set Text
-            if (tooltip.body) {
-              const tableHead = document.createElement('thead');
-              const titleRow = document.createElement('tr');
-              const titleTh = document.createElement('th');
-              titleTh.style.textAlign = 'left';
-              titleTh.style.fontWeight = '600'; // font-semibold
-              titleTh.style.paddingBottom = '0.5rem'; // mb-2
-              titleTh.style.color = titleColor; // Use dynamic color from options
-
-              // ---- Process data points for table ----
-              const metricsData = new Map<string, Record<string, { value: number | null, color: string }>>();
-              const sessionNamesSet = new Set<string>();
-
-              tooltip.dataPoints.forEach(dataPoint => {
-                const datasetLabel = dataPoint.dataset.label || 'Unknown';
-                // Prevent processing internal/highlight datasets
-                if (datasetLabel.includes('Burst Logging')) return;
-
-                const parts = datasetLabel.split(" - ");
-                const sessionName = parts[0] || "Unknown";
-                const metricLabel = parts.slice(1).join(" - ") || dataPoint.datasetIndex.toString();
-                const value = dataPoint.parsed.y;
-                const color = dataPoint.dataset.borderColor as string || titleColor; // Fallback color
-
-                sessionNamesSet.add(sessionName);
-
-                if (!metricsData.has(metricLabel)) {
-                  metricsData.set(metricLabel, {});
-                }
-                metricsData.get(metricLabel)![sessionName] = { value, color };
-              });
-
-              const orderedSessionNames = Array.from(sessionNamesSet).sort();
-              const orderedMetricLabels = Array.from(metricsData.keys()).sort();
-              // ---- END Process ----
-
-              // Set Title (X-axis value)
-              const firstDataPoint = tooltip.dataPoints[0];
-              const xValue = firstDataPoint?.parsed?.x;
-              titleTh.innerText = `${xAxisKey === 'TIMESTAMP' ? 'Time' : 'Distance'}: ${xValue?.toFixed(2) ?? 'N/A'}`;
-              // Set colspan dynamically based on number of sessions + metric column
-              titleTh.colSpan = orderedSessionNames.length + 1;
-
-              titleRow.appendChild(titleTh);
-              tableHead.appendChild(titleRow);
-
-              const tableBody = document.createElement('tbody');
-
-              // Create Header Row for Sessions
-              const headerRow = document.createElement('tr');
-              const metricHeaderTh = document.createElement('th');
-              metricHeaderTh.innerText = 'Metric';
-              metricHeaderTh.style.textAlign = 'left';
-              metricHeaderTh.style.fontWeight = '500'; // font-medium
-              metricHeaderTh.style.color = tickColor; // Use tick color for headers
-              metricHeaderTh.style.paddingRight = '0.5rem'; // pr-2
-              headerRow.appendChild(metricHeaderTh);
-
-              orderedSessionNames.forEach(sessionName => {
-                const sessionHeaderTh = document.createElement('th');
-                sessionHeaderTh.innerText = sessionName;
-                sessionHeaderTh.style.textAlign = 'right';
-                sessionHeaderTh.style.fontWeight = '500';
-                sessionHeaderTh.style.color = tickColor;
-                sessionHeaderTh.style.paddingLeft = '0.5rem';
-                sessionHeaderTh.style.paddingRight = '0.5rem';
-                headerRow.appendChild(sessionHeaderTh);
-              });
-              tableBody.appendChild(headerRow);
-
-              // Create Data Rows for Metrics
-              orderedMetricLabels.forEach(metricLabel => {
-                const dataRow = document.createElement('tr');
-                const metricTd = document.createElement('td');
-                metricTd.innerText = metricLabel;
-                metricTd.style.textAlign = 'left';
-                metricTd.style.fontWeight = '600';
-                metricTd.style.paddingRight = '0.5rem';
-                metricTd.style.whiteSpace = 'nowrap';
-                dataRow.appendChild(metricTd);
-
-                orderedSessionNames.forEach(sessionName => {
-                  const valueTd = document.createElement('td');
-                  const metricSessionData = metricsData.get(metricLabel)?.[sessionName];
-                  valueTd.innerText = metricSessionData?.value !== null && metricSessionData?.value !== undefined
-                    ? metricSessionData.value.toFixed(2)
-                    : 'N/A';
-                  valueTd.style.textAlign = 'right';
-                  valueTd.style.fontWeight = '600';
-                  valueTd.style.color = metricSessionData?.color || titleColor; // Use series color
-                  valueTd.style.paddingLeft = '0.5rem';
-                  valueTd.style.paddingRight = '0.5rem';
-                  dataRow.appendChild(valueTd);
-                });
-                tableBody.appendChild(dataRow);
-              });
-
-              // --- Check for Burst Logging ---
-              let isBursting = false;
-              // Ensure we have data points and full data to check against
-              if (tooltip.dataPoints.length > 0 && fullDataForDetails && fullDataForDetails.length > 0) {
-                const firstPoint = tooltip.dataPoints[0];
-                const xValue = firstPoint.parsed?.x;
-
-                // Only proceed if xValue is a valid number
-                if (typeof xValue === 'number' && !isNaN(xValue)) {
-                  // Optimization: Map only if needed or consider pre-sorting/mapping fullDataForDetails if performance is an issue
-                  const sortedXValues = fullDataForDetails.map(d => d[xAxisKey] as number).filter(v => typeof v === 'number'); // Filter out non-numbers during mapping
-
-                  const closestDataIndex = findClosestDataIndexBinarySearch(sortedXValues, xValue);
-
-                  if (closestDataIndex !== -1) {
-                    // Find the actual full data point corresponding to the index in the potentially filtered sortedXValues
-                    // This requires finding the point in the *original* fullDataForDetails that matches the x-value found
-                    const targetX = sortedXValues[closestDataIndex]; // The closest X value we found
-                    const fullDataPoint = fullDataForDetails.find(d => (d[xAxisKey] as number) === targetX); // Find the exact point
-
-                    // Check if *any* runId associated with this point has burst status true
-                    if (fullDataPoint) { // Check if find was successful
-                      isBursting = Object.keys(fullDataPoint).some(key =>
-                        key.endsWith(':BURST_LOGGING_STATUS') && (fullDataPoint[key] === true || String(fullDataPoint[key]).toLowerCase() === 'true')
-                      );
-                    }
-                  }
-                }
-              }
-              // Show/Hide Badge based on burst status
-              if (badgeEl) badgeEl.style.visibility = isBursting ? 'visible' : 'hidden';
-
-
-              const tableRoot = tooltipEl.querySelector('table');
-              // Clear and rebuild table
-              while (tableRoot?.firstChild) {
-                tableRoot.firstChild.remove();
-              }
-              tableRoot?.appendChild(tableHead);
-              tableRoot?.appendChild(tableBody);
-            }
-
-            // Positioning
-            const { offsetLeft: positionX, offsetTop: positionY } = chart.canvas;
-            const canvasHeight = chart.canvas.height / chart.currentDevicePixelRatio; // Adjust for device pixel ratio
-            const canvasWidth = chart.canvas.width / chart.currentDevicePixelRatio; // Adjust for device pixel ratio
-
-            tooltipEl.style.opacity = '1';
-            tooltipEl.style.padding = tooltip.options.padding + 'px ' + tooltip.options.padding + 'px';
-
-            // Calculate position relative to canvas, adjusted for potential scaling
-            let caretX = tooltip.caretX;
-            let caretY = tooltip.caretY;
-
-            // Prevent tooltip going off screen - Adjust positioning slightly
-            const tooltipWidth = tooltipEl.offsetWidth;
-            const tooltipHeight = tooltipEl.offsetHeight;
-            let newX = positionX + caretX;
-            let newY = positionY + caretY;
-
-            // Default transform
-            let transformX = '-50%';
-            let transformY = '0%'; // Position below caret by default
-
-            // Adjust horizontal position
-            if (caretX < tooltipWidth / 2) { // Too close to left edge
-              transformX = '0%'; // Align left edge of tooltip with caret
-              newX = positionX + caretX + 5; // Add small offset
-            } else if (caretX > canvasWidth - tooltipWidth / 2) { // Too close to right edge
-              transformX = '-100%'; // Align right edge of tooltip with caret
-              newX = positionX + caretX - 5; // Add small offset
-            } else {
-              // Default centered horizontal position is fine
-              newX = positionX + caretX;
-            }
-
-            // Adjust vertical position (place above if near bottom edge)
-            if (caretY > canvasHeight - tooltipHeight - 15) { // If caret + tooltip height exceeds canvas height (with margin)
-              transformY = '-100%'; // Align bottom edge of tooltip above caret
-              newY = positionY + caretY - 15; // Move slightly above caret
-            } else {
-              transformY = '0%'; // Align top edge below caret
-              newY = positionY + caretY + 15; // Move slightly below caret
-            }
-
-            tooltipEl.style.left = newX + 'px';
-            tooltipEl.style.top = newY + 'px';
-            tooltipEl.style.transform = `translate(${transformX}, ${transformY})`;
-          },
-          callbacks: {
-            // No callbacks needed here when using external tooltip
-          }
+          position: 'average', // Helps determine positioning
+          external: throttledExternalTooltipHandler, // <-- USE THE THROTTLED FUNCTION
         },
         zoom: {
-          limits: { 
+          limits: {
             x: { min: xMin, max: xMax },
             yLeft: { min: 0, max: yLeftMax },
             yRight: { min: 0, max: 100 },
@@ -557,7 +631,9 @@ export const ChartJsChart = forwardRef<ChartJsChartHandle, ChartJsChartProps>(({
     onPointClick,
     fullDataForDetails,
     debouncedTheme,
-    labels
+    labels,
+    isTooltipEnabled,
+    throttledExternalTooltipHandler
   ]);
 
   useEffect(() => {

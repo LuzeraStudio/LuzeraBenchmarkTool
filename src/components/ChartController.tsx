@@ -175,7 +175,7 @@ export const ChartController = ({
     const { sessions, deleteSession } = useBenchmarkData();
     const { selectedMap, selectedMetrics, xAxisKey, setSelectedMap, setSelectedMetrics,
         setXAxisKey, selectedSessionIds, setSelectedSessionIds, isInitialSessionLoadDone,
-        setIsInitialSessionLoadDone, chartHeight, setChartHeight } = useChartSettings();
+        setIsInitialSessionLoadDone, chartHeight, setChartHeight, isTooltipEnabled, setIsTooltipEnabled } = useChartSettings();
     const [hiddenDatasetLabels, setHiddenDatasetLabels] = useState(new Set<string>());
     const [debouncedTheme, setDebouncedTheme] = useState(theme);
     const chartComponentRef = useRef<ChartJsChartHandle>(null);
@@ -527,8 +527,10 @@ export const ChartController = ({
             if (dataset.yAxisID === 'yLeft') {
                 foundLeftAxis = true;
                 dataset.data.forEach(point => {
-                    if (point && typeof point.y === 'number' && point.y > max) {
-                        max = point.y;
+                    if (point && typeof point === 'object' && typeof point.y === 'number') {
+                        if (point.y > max) {
+                            max = point.y;
+                        }
                     }
                 });
             }
@@ -1015,6 +1017,14 @@ export const ChartController = ({
                                 </TooltipTrigger>
                                 <TooltipContent><p>Zoom In Vertically</p></TooltipContent>
                             </Tooltip>
+                            <Tooltip>
+                            <TooltipTrigger asChild>
+                                <Button variant="outline" size="sm" onClick={() => setIsTooltipEnabled(!isTooltipEnabled)} className="h-9">
+                                    {isTooltipEnabled ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent><p>{isTooltipEnabled ? "Hide Tooltip" : "Show Tooltip"}</p></TooltipContent>
+                        </Tooltip>
                         </div>
                         <Tooltip>
                             <TooltipTrigger asChild>
@@ -1133,6 +1143,7 @@ export const ChartController = ({
                             onPointClick={handlePointClick}
                             fullDataForDetails={processedChartData.fullDataForDetails}
                             hiddenDatasetLabels={hiddenDatasetLabels}
+                            isTooltipEnabled={isTooltipEnabled}
                         />
                             {/* VVV NEW LEGEND REDESIGN VVV */}
                             {selectedSessionMetas.length > 0 && selectedMetricMetas.length > 0 && (
