@@ -43,6 +43,14 @@ export const ChartController = ({
     const chartSettings = useChartSettings();
     const { selectedMap, setSelectedMap, xAxisKey, setXAxisKey, selectedMetrics, setSelectedMetrics, isTooltipEnabled, setIsTooltipEnabled, chartHeight, setChartHeight, chartZoom, setChartZoom, } = chartSettings;
     const chartComponentRef = useRef<ChartJsChartHandle>(null);
+    const [debouncedTheme, setDebouncedTheme] = useState(theme);
+
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setDebouncedTheme(theme);
+        }, 0);
+        return () => clearTimeout(timer);
+    }, [theme]);
 
     // --- 1. Selection & Data Derivation ---
     const { allAvailableMetrics, sessionNameMap, uniqueSessionsInRuns, selectedMetricMetas, selectedSessionMetas, activeRuns, toggleMetric, toggleSession, handleDeleteSession, } = useBenchmarkSelection(runs, sessions, chartSettings);
@@ -53,7 +61,7 @@ export const ChartController = ({
     const { presets, newPresetName, setNewPresetName, isPresetPopoverOpen, setIsPresetPopoverOpen, loadPreset, saveNewPreset, deletePreset, getMetricColor, handleColorChange, triggerColorInput, colorInputRef, } = useChartPresetManager(allAvailableMetrics, setSelectedMetrics, selectedMetrics);
 
     // --- 3. Chart Data Processing (Worker) ---
-    const { isChartLoading, processedChartData, eventAnnotations, burstAnnotations, } = useChartDataManager(activeRuns, xAxisKey, selectedMetrics, theme);
+    const { isChartLoading, processedChartData, eventAnnotations, burstAnnotations, } = useChartDataManager(activeRuns, xAxisKey, selectedMetrics, debouncedTheme);
 
     // --- 4. Legend Visibility ---
     const { hiddenDatasetLabels, handleShowAll, handleHideAll, handleStatHeaderToggle, handleLegendToggle, handleSessionHeaderToggle, } = useChartLegendManager(selectedSessionMetas, selectedMetricMetas);
@@ -118,7 +126,7 @@ export const ChartController = ({
         sessionNameMap,
         allAvailableMetrics,
         getMetricColor,
-        theme,
+        debouncedTheme,
     ]);
 
     const { yRamMax, yLeftMax } = useChartAxisMax(
