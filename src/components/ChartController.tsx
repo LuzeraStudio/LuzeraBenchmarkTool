@@ -1194,7 +1194,7 @@ export const ChartController = ({
                                     <List className="h-4 w-4 mr-2 shrink-0" />Stats ({selectedMetrics.size})
                                 </Button>
                             </PopoverTrigger>
-                            <PopoverContent className="p-0" align="start">
+                            <PopoverContent className="p-0" align="end">
                                 <Command>
                                     <CommandInput placeholder="Search stats..." />
                                     <CommandEmpty>No stats found.</CommandEmpty>
