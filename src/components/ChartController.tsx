@@ -1389,7 +1389,7 @@ export const ChartController = ({
 
             {/* Point Details Dialog */}
             <Dialog open={isPointDialogOpen} onOpenChange={setIsPointDialogOpen}>
-                <DialogContent className="max-w-5xl max-h-[80vh] flex flex-col">
+                <DialogContent className="w-auto max-w-[90vw] max-h-[80vh] flex flex-col">
                     <DialogHeader>
                         <DialogTitle>Data Point Comparison</DialogTitle>
                         <DialogDescription>
