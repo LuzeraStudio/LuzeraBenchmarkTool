@@ -13,7 +13,7 @@ const router = createHashRouter([
     path: "/documentation",
     element: <Documentation />,
   }
-], { basename: "/LuzeraBenchmarkTool/" });
+]);
 
 function App() {
   return <RouterProvider router={router} />
