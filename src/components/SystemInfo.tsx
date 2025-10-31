@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react"; // Import hooks
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { useBenchmarkData } from "@/contexts/BenchmarkContext"; // Import context hook
+import { useBenchmarkData } from "@/contexts/BenchmarkContext";
 import {
   Table,
   TableBody,

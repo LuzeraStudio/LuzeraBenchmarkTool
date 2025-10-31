@@ -1,5 +1,4 @@
 import { Moon, Sun } from "lucide-react";
-
 import { Button } from "@/components/ui/button";
 import {
     DropdownMenu,
@@ -22,7 +21,6 @@ export function ThemeToggle() {
                 </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-                {/* Update onClick handlers */}
                 <DropdownMenuItem onClick={() => setTheme("light")}>
                     Light
                 </DropdownMenuItem>

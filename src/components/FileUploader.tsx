@@ -1,9 +1,9 @@
 import { useCallback } from "react";
 import { useDropzone } from "react-dropzone";
-import { UploadCloud, Folder } from "lucide-react"; // Import Folder icon
+import { UploadCloud, Folder } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "./ui/button";
-import { useBenchmarkData } from "@/contexts/BenchmarkContext"; // Import context hook
+import { useBenchmarkData } from "@/contexts/BenchmarkContext";
 
 interface FileUploaderProps {
   variant?: "default" | "compact";
@@ -26,7 +26,7 @@ export const FileUploader = ({ variant = "default" }: FileUploaderProps) => {
     accept: {
       "text/csv": [".csv"],
     },
-    disabled: isLoading, // Disable dropzone while loading
+    disabled: isLoading,
   });
 
   if (variant === "compact") {

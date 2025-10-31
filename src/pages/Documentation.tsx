@@ -1,13 +1,11 @@
 import { useState, useEffect } from "react";
-// Go up one level from 'pages' to 'src', then into 'components'
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { BookText, Gauge } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { cn } from "@/lib/utils"; // Make sure cn is imported
-import { Link } from "react-router-dom"; // Import Link for navigation
+import { cn } from "@/lib/utils";
+import { Link } from "react-router-dom";
 
-// Define sections for documentation
 const sections = [
   { id: "introduction", title: "Introduction" },
   { id: "getting-started", title: "Getting Started" },
@@ -29,22 +27,17 @@ const Highlight = ({ children }: { children: React.ReactNode }) => (
 const Documentation = () => {
   const [activeSection, setActiveSection] = useState<string>("introduction");
 
-  // Smooth scroll handler
   const handleScrollTo = (id: string) => {
     const element = document.getElementById(id);
     if (element) {
       element.scrollIntoView({ behavior: "smooth", block: "start" });
-      // Note: IntersectionObserver is better for highlighting active section,
-      // but this basic version just sets it on click for simplicity.
-      setActiveSection(id); // Let IntersectionObserver handle setting active section
     }
   };
 
-  // Update active section based on scroll position using IntersectionObserver
+  // Update active section based on scroll position
   useEffect(() => {
     const observerCallback = (entries: IntersectionObserverEntry[]) => {
       entries.forEach((entry) => {
-        // When a section enters the top part of the viewport or is mostly visible
         if (entry.isIntersecting) {
           if (entry.target.id) {
             setActiveSection(entry.target.id);
@@ -53,11 +46,11 @@ const Documentation = () => {
       });
     };
 
-    // Adjust rootMargin: Trigger when the element enters the top 20% of the viewport
-    // or leaves the bottom 60% (ensuring it's prominently in view).
+    // Adjust rootMargin: Trigger when the element enters the top 20%
+    // or leaves the bottom 70% (ensuring it's prominently in view).
     const observerOptions = {
-      rootMargin: "-20% 0px -70% 0px", // Top Tigger: 20% from top, Bottom Trigger: 30% from bottom
-      threshold: 0.1, // Trigger even if only a small part is visible within the margin
+      rootMargin: "-20% 0px -70% 0px",
+      threshold: 0.1,
     };
 
     const observer = new IntersectionObserver(
@@ -72,15 +65,13 @@ const Documentation = () => {
       }
     });
 
-    return () => observer.disconnect(); // Cleanup observer on unmount
+    return () => observer.disconnect();
   }, []);
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
-      {/* Header */}
       <header className="border-b border-border bg-card sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          {/* Link back to Analyzer */}
           <Link
             to="/"
             className="flex items-center gap-3 hover:opacity-80 transition-opacity"
@@ -109,14 +100,8 @@ const Documentation = () => {
         </div>
       </header>
 
-      {/* Main Content Area */}
       <div className="container mx-auto px-4 py-8 flex-1 grid grid-cols-1 md:grid-cols-[250px_1fr] gap-8">
-        {" "}
-        {/* Fixed width sidebar on desktop */}
-        {/* Sidebar Navigation */}
         <aside className="md:sticky md:top-24 h-fit">
-          {" "}
-          {/* Sticky sidebar */}
           <h2 className="text-lg font-semibold mb-4 border-b pb-2">Sections</h2>
           {/* Use max-h for scroll within bounds, adjust 10rem/12rem based on actual header+padding height */}
           <ScrollArea className="max-h-[calc(100vh-10rem)] md:max-h-[calc(100vh-12rem)] pr-4">
@@ -130,7 +115,7 @@ const Documentation = () => {
                   className={cn(
                     "justify-start text-left h-auto py-2 px-3 whitespace-normal", // Allow text wrap
                     activeSection === section.id
-                      ? "bg-muted text-primary hover:bg-muted font-semibold" // Make active bold
+                      ? "bg-muted text-primary hover:bg-muted font-semibold"
                       : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
                   )}
                 >
@@ -140,10 +125,9 @@ const Documentation = () => {
             </nav>
           </ScrollArea>
         </aside>
-        {/* Documentation Content */}
-        {/* Added scroll-mt-20 to sections for sticky header offset */}
+
+        {/* Add scroll-mt-20 to sections for sticky header offset */}
         <main className="space-y-12 min-w-0">
-          {/* Introduction */}
           <section id="introduction" className="space-y-4 scroll-mt-20 pt-2">
             <h2 className="text-3xl font-bold border-b pb-2 flex items-center gap-2">
               <BookText className="h-6 w-6 text-primary" /> Introduction
@@ -179,7 +163,6 @@ const Documentation = () => {
             </p>
           </section>
 
-          {/* Getting Started */}
           <section id="getting-started" className="space-y-4 scroll-mt-20 pt-2">
             <h2 className="text-3xl font-bold border-b pb-2">
               Getting Started
@@ -348,7 +331,6 @@ const Documentation = () => {
             </ul>
           </section>
 
-          {/* Command-Line Arguments */}
           <section id="command-line" className="space-y-4 scroll-mt-20 pt-2">
             <h2 className="text-3xl font-bold border-b pb-2 flex items-center">
               Command-Line Arguments
@@ -398,7 +380,6 @@ const Documentation = () => {
             </p>
           </section>
 
-          {/* CSV File Format */}
           <section id="csv-format" className="space-y-4 scroll-mt-20 pt-2">
             <h2 className="text-3xl font-bold border-b pb-2">
               CSV File Format
@@ -429,7 +410,6 @@ const Documentation = () => {
             </p>
           </section>
 
-          {/* StaticData.csv */}
           <section id="static-data" className="space-y-4 scroll-mt-20 pt-2">
             <h2 className="text-3xl font-bold border-b pb-2">StaticData.csv</h2>
             <p>
@@ -452,7 +432,6 @@ const Documentation = () => {
             </p>
           </section>
 
-          {/* PerformanceLog.csv */}
           <section id="performance-log" className="space-y-4 scroll-mt-20 pt-2">
             <h2 className="text-3xl font-bold border-b pb-2">
               PerformanceLog.csv
@@ -517,7 +496,6 @@ const Documentation = () => {
             </p>
           </section>
 
-          {/* Events.csv */}
           <section id="events" className="space-y-4 scroll-mt-20 pt-2">
             <h2 className="text-3xl font-bold border-b pb-2">Events.csv</h2>
             <p>
@@ -555,7 +533,6 @@ const Documentation = () => {
             </p>
           </section>
 
-          {/* Using the Analyzer */}
           <section id="using-analyzer" className="space-y-4 scroll-mt-20 pt-2">
             <h2 className="text-3xl font-bold border-b pb-2">
               Using the Analyzer
@@ -603,8 +580,7 @@ const Documentation = () => {
             </ul>
           </section>
 
-          {/* Metrics Glossary */}
-          {/*<section
+          <section
             id="metrics-glossary"
             className="space-y-4 scroll-mt-20 pt-2"
           >
@@ -655,11 +631,9 @@ const Documentation = () => {
                 the process. Approaching the GPU's total VRAM can cause severe
                 stuttering.
               </li>
-              {/* Add more common metrics as needed */}
-          {/*</ul>
-          </section>*/}
+            </ul>
+          </section>
 
-          {/* FAQ */}
           <section id="faq" className="space-y-4 scroll-mt-20 pt-2">
             <h2 className="text-3xl font-bold border-b pb-2 flex items-center gap-2">
               <BookText className="h-6 w-6 text-primary" /> Frequently Asked
@@ -816,7 +790,7 @@ const Documentation = () => {
             </dl>
           </section>
 
-          {/* Filler */}
+          {/* Filler to allow last section to be scrolled to top */}
           <section
             id="filer"
             className="space-y-4 scroll-mt-20 pt-2 min-h-[400px]"

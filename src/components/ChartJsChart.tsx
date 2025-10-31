@@ -1,707 +1,186 @@
-// src/components/ChartJsChart.tsx
-import { useRef, useEffect, useMemo, useState, useImperativeHandle, forwardRef, useCallback } from "react";
+import {
+  useRef,
+  useEffect,
+  useMemo,
+  useState,
+  useImperativeHandle,
+  forwardRef,
+} from "react";
 import { Line } from "react-chartjs-2";
 import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Tooltip as ChartTooltip, // Keep renamed import
-  Legend,
-  TimeScale, // Import TimeScale
-  type ChartOptions,
+  type Chart as ChartJS,
   type ChartData,
-  type Point, // Import Point type
-  type InteractionItem, // Import InteractionItem for onClick
-  Scale,
-  type TooltipItem, // Import Scale type
+  type Point,
 } from "chart.js";
-import zoomPlugin from "chartjs-plugin-zoom";
-import annotationPlugin, { type AnnotationOptions } from "chartjs-plugin-annotation";
-import type { ChartAxisKey, PerformanceLogEntry } from "@/types/benchmark"; // Use BenchmarkEvent
-import { useTheme } from "@/contexts/ThemeContext"; // For theme-aware colors
-import 'chartjs-adapter-date-fns'; // Import date adapter
+import type { AnnotationOptions } from "chartjs-plugin-annotation";
+import type { ChartAxisKey, PerformanceLogEntry } from "@/types/benchmark";
+import { useTheme } from "@/contexts/ThemeContext";
 import { getComputedColor } from "@/lib/colorUtils";
-import { findClosestDataIndexBinarySearch } from "@/lib/utils";
-import { useThrottle } from "@/hooks/useThrottle";
+import { useChartJsTooltip } from "@/hooks/ChartJS/useChartJsTooltip";
+import { useChartJsOptions } from "@/hooks/ChartJS/useChartJsOptions";
+import "@/lib/chartjs-config"; // Import for side-effects (Chart.js registration)
 
-// Register Chart.js components and plugins
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  TimeScale, // Register TimeScale
-  ChartTooltip, // Register renamed Tooltip
-  Legend,
-  zoomPlugin, // Register zoom plugin
-  annotationPlugin // Register annotation plugin
-);
-
-// --- Types ---
 interface ChartZoomState {
   xMin: number | null;
   xMax: number | null;
 }
 
 interface ChartJsChartProps {
-  chartTitle: string;
-  datasets: ChartData<'line', (number | Point | null)[], number | string>['datasets']; // Use Chart.js specific type
-  labels: (number | string)[]; // X-axis labels (time or distance)
+  datasets: ChartData<"line", (number | Point | null)[], number | string>["datasets"];
+  labels: (number | string)[];
   xAxisKey: ChartAxisKey;
-  yAxesConfig: { left?: boolean; right?: boolean; ram?: boolean }; // Configuration for Y-axes
+  yAxesConfig: { left?: boolean; right?: boolean; ram?: boolean };
   eventAnnotations: AnnotationOptions[];
   burstAnnotations: AnnotationOptions[];
   chartHeight: number;
-  onPointClick: (dataPoint: PerformanceLogEntry | null) => void; // Callback for point details
-  fullDataForDetails: PerformanceLogEntry[]; // Needed for click handler and tooltip badge
+  onPointClick: (dataPoint: PerformanceLogEntry | null) => void;
+  fullDataForDetails: PerformanceLogEntry[];
   hiddenDatasetLabels: Set<string>;
   yRamMax?: number;
   yLeftMax?: number;
   isTooltipEnabled: boolean;
-  chartZoom: ChartZoomState; // <-- ADDED
-  setChartZoom: (zoom: ChartZoomState) => void; // <-- ADDED
+  chartZoom: ChartZoomState;
+  setChartZoom: (zoom: ChartZoomState) => void;
 }
-
-// Helper function to create or get the tooltip element
-const getOrCreateTooltip = (chart: ChartJS) => {
-  let tooltipEl = chart.canvas.parentNode?.querySelector<HTMLDivElement>('div[id="chartjs-tooltip"]');
-
-  if (!tooltipEl) {
-    tooltipEl = document.createElement('div');
-    tooltipEl.id = 'chartjs-tooltip';
-    tooltipEl.style.background = 'rgba(0, 0, 0, 0.7)'; // Default, will be updated
-    tooltipEl.style.borderRadius = '3px';
-    tooltipEl.style.color = 'white';
-    tooltipEl.style.opacity = '1';
-    tooltipEl.style.pointerEvents = 'none';
-    tooltipEl.style.position = 'absolute'; // Ensure it's absolute for positioning badge
-    tooltipEl.style.transform = 'translate(-50%, 0)';
-    tooltipEl.style.transition = 'all .1s ease';
-    tooltipEl.style.border = '1px solid black'; // Default, will be updated
-    tooltipEl.style.padding = '0.75rem'; // p-3
-    tooltipEl.style.boxShadow = '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)'; // shadow-lg
-    tooltipEl.style.minWidth = '200px';
-    tooltipEl.style.zIndex = '50';
-
-    const table = document.createElement('table');
-    table.style.margin = '0px';
-    table.style.width = '100%';
-    table.style.fontSize = '0.75rem'; // text-xs
-    table.style.borderCollapse = 'separate';
-    table.style.borderSpacing = '0 4px'; // Corresponds to Tailwind spacing
-    tooltipEl.appendChild(table);
-
-    // Create badge element once and hide/show it later
-    const badgeEl = document.createElement('div');
-    badgeEl.id = 'chartjs-tooltip-badge';
-    badgeEl.style.position = 'absolute';
-    badgeEl.style.top = '0.25rem'; // Adjust as needed
-    badgeEl.style.right = '0.25rem'; // Adjust as needed
-    badgeEl.style.background = 'var(--destructive)'; // Red background
-    badgeEl.style.color = 'white'; // White text
-    badgeEl.style.borderRadius = '0.25rem'; // rounded-sm
-    badgeEl.style.padding = '0.125rem 0.375rem'; // py-0.5 px-1.5
-    badgeEl.style.fontSize = '0.65rem'; // text-[10px]
-    badgeEl.style.fontWeight = '800'; // font-semibold
-    badgeEl.style.lineHeight = '1'; // leading-none
-    badgeEl.style.display = 'flex'; // Use flex for icon + text
-    badgeEl.style.alignItems = 'center';
-    badgeEl.style.gap = '0.25rem'; // gap-1
-    badgeEl.style.visibility = 'hidden'; // Start hidden
-    badgeEl.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg><span>Hitch</span>`;
-    tooltipEl.appendChild(badgeEl);
-
-    chart.canvas.parentNode?.appendChild(tooltipEl);
-  }
-
-  return tooltipEl as HTMLDivElement;
-};
-
-const formatValue = (value: number | null | undefined): string => {
-  if (value === null || value === undefined) {
-    return 'N/A';
-  }
-  // Check if it's an integer
-  if (value % 1 === 0) {
-    return value.toString();
-  }
-  // Otherwise, format as float
-  return value.toFixed(2);
-};
 
 export interface ChartJsChartHandle {
   resetZoom: () => void;
-  getZoomRange: () => { xMin: number | undefined, xMax: number | undefined };
+  getZoomRange: () => { xMin: number | undefined; xMax: number | undefined };
 }
 
-// --- Chart Component ---
-export const ChartJsChart = forwardRef<ChartJsChartHandle, ChartJsChartProps>(({
-  datasets,
-  labels,
-  xAxisKey,
-  yAxesConfig,
-  eventAnnotations,
-  burstAnnotations,
-  chartHeight,
-  onPointClick,
-  fullDataForDetails,
-  hiddenDatasetLabels,
-  yRamMax,
-  yLeftMax,
-  isTooltipEnabled,
-  chartZoom,
-  setChartZoom,
-}, ref) => {
-  const chartRef = useRef<ChartJS<"line", (number | Point | null)[], number | string> | null>(null);
-  const { theme } = useTheme(); // Get current theme
-
-  const [debouncedTheme, setDebouncedTheme] = useState(theme);
-
-  useImperativeHandle(ref, () => ({
-    resetZoom: () => {
-      chartRef.current?.resetZoom();
+export const ChartJsChart = forwardRef<
+  ChartJsChartHandle,
+  ChartJsChartProps
+>(
+  (
+    {
+      datasets,
+      labels,
+      xAxisKey,
+      yAxesConfig,
+      eventAnnotations,
+      burstAnnotations,
+      chartHeight,
+      onPointClick,
+      fullDataForDetails,
+      hiddenDatasetLabels,
+      yRamMax,
+      yLeftMax,
+      isTooltipEnabled,
+      chartZoom,
+      setChartZoom,
     },
-    getZoomRange: () => {
+    ref,
+  ) => {
+    const chartRef =
+      useRef<ChartJS<"line", (number | Point | null)[], number | string> | null>(
+        null,
+      );
+    const { theme } = useTheme();
+    const [debouncedTheme, setDebouncedTheme] = useState(theme);
+
+    useImperativeHandle(ref, () => ({
+      resetZoom: () => {
+        chartRef.current?.resetZoom();
+      },
+      getZoomRange: () => {
+        const chart = chartRef.current;
+        if (!chart) return { xMin: undefined, xMax: undefined };
+        return {
+          xMin: chart.scales.x.min,
+          xMax: chart.scales.x.max,
+        };
+      },
+    }));
+
+    useEffect(() => {
+      const timer = setTimeout(() => {
+        setDebouncedTheme(theme);
+      }, 0);
+      return () => clearTimeout(timer);
+    }, [theme]);
+
+    const gridColor = getComputedColor("hsl(var(--border))");
+    const tickColor = getComputedColor("hsl(var(--muted-foreground))");
+    const titleColor = getComputedColor("hsl(var(--foreground))");
+
+    const chartData: ChartData<
+      "line",
+      (number | Point | null)[],
+      number | string
+    > = useMemo(() => ({
+      labels: labels,
+      datasets: datasets,
+    }), [labels, datasets]);
+
+    const throttledExternalTooltipHandler = useChartJsTooltip({
+      xAxisKey,
+      fullDataForDetails,
+      isTooltipEnabled,
+      theme: debouncedTheme,
+    });
+
+    const options = useChartJsOptions({
+      datasets,
+      chartZoom,
+      setChartZoom,
+      xAxisKey,
+      yAxesConfig,
+      yLeftMax,
+      yRamMax,
+      isTooltipEnabled,
+      throttledExternalTooltipHandler,
+      eventAnnotations,
+      burstAnnotations,
+      onPointClick,
+      fullDataForDetails,
+      titleColor,
+      gridColor,
+      tickColor,
+    });
+
+    useEffect(() => {
       const chart = chartRef.current;
-      if (!chart) return { xMin: undefined, xMax: undefined };
-      return {
-        xMin: chart.scales.x.min,
-        xMax: chart.scales.x.max,
-      };
-    }
-  }));
+      if (!chart) return;
 
-  useEffect(() => {
-    // This effect runs *after* the DOM update from ThemeProvider.
-    // We use a 0ms timeout to push this state update to the *next*
-    // event loop tick, guaranteeing the DOM is painted first.
-    const timer = setTimeout(() => {
-      setDebouncedTheme(theme);
-    }, 0);
+      let needsUpdate = false;
+      chart.data.datasets.forEach((dataset, index) => {
+        const label = dataset.label;
+        if (label) {
+          const shouldBeHidden = hiddenDatasetLabels.has(label);
+          const isCurrentlyHidden = !chart.isDatasetVisible(index);
 
-    return () => clearTimeout(timer); // Cleanup
-  }, [theme]); // Run *only* when the theme string changes
-
-  const gridColor = getComputedColor("hsl(var(--border))");
-  const tickColor = getComputedColor("hsl(var(--muted-foreground))");
-  const titleColor = getComputedColor("hsl(var(--foreground))");
-  const tooltipBgColor = getComputedColor("hsl(var(--background))");
-
-  // Memoize chart data
-  const chartData: ChartData<'line', (number | Point | null)[], number | string> = useMemo(() => ({
-    labels: labels,
-    datasets: datasets,
-  }), [labels, datasets]);
-
-  const externalTooltipHandler = useCallback((context: any) => { // 'any' is fine here
-    const { chart, tooltip } = context;
-    const tooltipEl = getOrCreateTooltip(chart);
-
-    // --- Update styles based on theme ---
-    tooltipEl.style.background = tooltipBgColor;
-    tooltipEl.style.color = titleColor;
-    tooltipEl.style.borderColor = gridColor;
-    // ---
-
-    const badgeEl = tooltipEl.querySelector<HTMLDivElement>('#chartjs-tooltip-badge');
-
-    // Hide if no tooltip
-    if (tooltip.opacity === 0 || !isTooltipEnabled) {
-      tooltipEl.style.opacity = '0';
-      if (badgeEl) badgeEl.style.visibility = 'hidden'; // Hide badge too
-      return;
-    }
-
-    // Set Text
-    if (tooltip.body) {
-      const { chart, tooltip } = context;
-      const tooltipEl = getOrCreateTooltip(chart);
-
-      // --- Update styles based on theme ---
-      tooltipEl.style.background = tooltipBgColor;
-      tooltipEl.style.color = titleColor;
-      tooltipEl.style.borderColor = gridColor;
-      // ---
-
-      const badgeEl = tooltipEl.querySelector<HTMLDivElement>('#chartjs-tooltip-badge');
-
-      // Hide if no tooltip
-      if (tooltip.opacity === 0) {
-        tooltipEl.style.opacity = '0';
-        if (badgeEl) badgeEl.style.visibility = 'hidden'; // Hide badge too
-        return;
-      }
-
-      // Set Text
-      if (tooltip.body) {
-        const tableHead = document.createElement('thead');
-        const titleRow = document.createElement('tr');
-        const titleTh = document.createElement('th');
-        titleTh.style.textAlign = 'left';
-        titleTh.style.fontWeight = '600'; // font-semibold
-        titleTh.style.paddingBottom = '0.5rem'; // mb-2
-        titleTh.style.color = titleColor; // Use dynamic color from options
-
-        // ---- Process data points for table ----
-        const metricsData = new Map<string, Record<string, { value: number | null, color: string }>>();
-        const sessionNamesSet = new Set<string>();
-
-        tooltip.dataPoints.forEach((dataPoint: TooltipItem<'line'>) => {
-          const datasetLabel = dataPoint.dataset.label || 'Unknown';
-          // Prevent processing internal/highlight datasets
-          if (datasetLabel.includes('Burst Logging')) return;
-
-          const parts = datasetLabel.split(" - ");
-          const sessionName = parts[0] || "Unknown";
-          const metricLabel = parts.slice(1).join(" - ") || dataPoint.datasetIndex.toString();
-          const value = dataPoint.parsed.y;
-          const color = dataPoint.dataset.borderColor as string || titleColor; // Fallback color
-
-          sessionNamesSet.add(sessionName);
-
-          if (!metricsData.has(metricLabel)) {
-            metricsData.set(metricLabel, {});
-          }
-          metricsData.get(metricLabel)![sessionName] = { value, color };
-        });
-
-        const orderedSessionNames = Array.from(sessionNamesSet).sort();
-        const orderedMetricLabels = Array.from(metricsData.keys()).sort();
-        // ---- END Process ----
-
-        // Set Title (X-axis value)
-        const firstDataPoint = tooltip.dataPoints[0];
-        const xValue = firstDataPoint?.parsed?.x;
-        titleTh.innerText = `${xAxisKey === 'TIMESTAMP' ? 'Time' : 'Distance'}: ${xValue?.toFixed(2) ?? 'N/A'}`;
-        // Set colspan dynamically based on number of sessions + metric column
-        titleTh.colSpan = orderedSessionNames.length + 1;
-
-        titleRow.appendChild(titleTh);
-        tableHead.appendChild(titleRow);
-
-        const tableBody = document.createElement('tbody');
-
-        // Create Header Row for Sessions
-        const headerRow = document.createElement('tr');
-        const metricHeaderTh = document.createElement('th');
-        metricHeaderTh.innerText = 'Metric';
-        metricHeaderTh.style.textAlign = 'left';
-        metricHeaderTh.style.fontWeight = '500'; // font-medium
-        metricHeaderTh.style.color = tickColor; // Use tick color for headers
-        metricHeaderTh.style.paddingRight = '0.5rem'; // pr-2
-        headerRow.appendChild(metricHeaderTh);
-
-        orderedSessionNames.forEach(sessionName => {
-          const sessionHeaderTh = document.createElement('th');
-          sessionHeaderTh.innerText = sessionName;
-          sessionHeaderTh.style.textAlign = 'right';
-          sessionHeaderTh.style.fontWeight = '500';
-          sessionHeaderTh.style.color = tickColor;
-          sessionHeaderTh.style.paddingLeft = '0.5rem';
-          sessionHeaderTh.style.paddingRight = '0.5rem';
-          headerRow.appendChild(sessionHeaderTh);
-        });
-        tableBody.appendChild(headerRow);
-
-        // Create Data Rows for Metrics
-        orderedMetricLabels.forEach(metricLabel => {
-          const dataRow = document.createElement('tr');
-          const metricTd = document.createElement('td');
-          metricTd.innerText = metricLabel;
-          metricTd.style.textAlign = 'left';
-          metricTd.style.fontWeight = '600';
-          metricTd.style.paddingRight = '0.5rem';
-          metricTd.style.whiteSpace = 'nowrap';
-          dataRow.appendChild(metricTd);
-
-          orderedSessionNames.forEach(sessionName => {
-            const valueTd = document.createElement('td');
-            const metricSessionData = metricsData.get(metricLabel)?.[sessionName];
-            valueTd.innerText = metricSessionData?.value !== null && metricSessionData?.value !== undefined
-              ? formatValue(metricSessionData?.value)
-              : 'N/A';
-            valueTd.style.textAlign = 'center';
-            valueTd.style.fontWeight = '600';
-            valueTd.style.color = metricSessionData?.color || titleColor; // Use series color
-            valueTd.style.paddingLeft = '0.5rem';
-            valueTd.style.paddingRight = '0.5rem';
-            dataRow.appendChild(valueTd);
-          });
-          tableBody.appendChild(dataRow);
-        });
-
-        // --- Check for Burst Logging ---
-        let isBursting = false;
-        // Ensure we have data points and full data to check against
-        if (tooltip.dataPoints.length > 0 && fullDataForDetails && fullDataForDetails.length > 0) {
-          const firstPoint = tooltip.dataPoints[0];
-          const xValue = firstPoint.parsed?.x;
-
-          // Only proceed if xValue is a valid number
-          if (typeof xValue === 'number' && !isNaN(xValue)) {
-            // Optimization: Map only if needed or consider pre-sorting/mapping fullDataForDetails if performance is an issue
-            const sortedXValues = fullDataForDetails.map(d => d[xAxisKey] as number).filter(v => typeof v === 'number'); // Filter out non-numbers during mapping
-
-            const closestDataIndex = findClosestDataIndexBinarySearch(sortedXValues, xValue);
-
-            if (closestDataIndex !== -1) {
-              // Find the actual full data point corresponding to the index in the potentially filtered sortedXValues
-              // This requires finding the point in the *original* fullDataForDetails that matches the x-value found
-              const targetX = sortedXValues[closestDataIndex]; // The closest X value we found
-              const fullDataPoint = fullDataForDetails.find(d => (d[xAxisKey] as number) === targetX); // Find the exact point
-
-              // Check if *any* runId associated with this point has burst status true
-              if (fullDataPoint) { // Check if find was successful
-                isBursting = Object.keys(fullDataPoint).some(key =>
-                  key.endsWith(':BURST_LOGGING_STATUS') && (fullDataPoint[key] === true || String(fullDataPoint[key]).toLowerCase() === 'true')
-                );
-              }
-            }
+          if (shouldBeHidden && !isCurrentlyHidden) {
+            chart.hide(index);
+            needsUpdate = true;
+          } else if (!shouldBeHidden && isCurrentlyHidden) {
+            chart.show(index);
+            needsUpdate = true;
           }
         }
-        // Show/Hide Badge based on burst status
-        if (badgeEl) badgeEl.style.visibility = isBursting ? 'visible' : 'hidden';
+      });
 
-
-        const tableRoot = tooltipEl.querySelector('table');
-        // Clear and rebuild table
-        while (tableRoot?.firstChild) {
-          tableRoot.firstChild.remove();
-        }
-        tableRoot?.appendChild(tableHead);
-        tableRoot?.appendChild(tableBody);
+      if (needsUpdate) {
+        chart.update();
       }
+    }, [hiddenDatasetLabels, datasets]);
 
-      const { offsetLeft: positionX, offsetTop: positionY } = chart.canvas;
-      const canvasHeight = chart.canvas.height / chart.currentDevicePixelRatio;
-      const canvasWidth = chart.canvas.width / chart.currentDevicePixelRatio;
-
-      tooltipEl.style.opacity = '1';
-      tooltipEl.style.padding = tooltip.options.padding + 'px ' + tooltip.options.padding + 'px';
-
-      const tooltipWidth = tooltipEl.offsetWidth;
-      const tooltipHeight = tooltipEl.offsetHeight;
-      const caretX = tooltip.caretX;
-      const caretY = tooltip.caretY;
-      const margin = 60; // Horizontal margin
-
-      let newX = 0;
-      let newY = 0;
-      let transformX = '0%';
-      let transformY = '0%';
-
-      // --- Horizontal Positioning (Left/Right) ---
-      // Try to position to the right first
-      newX = positionX + caretX + margin;
-      transformX = '0%'; // Align left edge of tooltip
-
-      // Check if it goes off the right edge of the canvas
-      if (newX + tooltipWidth > positionX + canvasWidth) {
-        // Flip to the left side
-        newX = positionX + caretX - margin;
-        transformX = '-100%'; // Align right edge of tooltip
-      }
-
-      // --- Vertical Positioning (Try to center, but pin to edges) ---
-      newY = positionY + caretY;
-      transformY = '-50%'; // Try to center vertically
-
-      const topEdge = newY - (tooltipHeight / 2);
-      const bottomEdge = newY + (tooltipHeight / 2);
-
-      if (topEdge < positionY) {
-        // Goes off top: Pin to top
-        newY = positionY;
-        transformY = '0%';
-      } else if (bottomEdge > positionY + canvasHeight) {
-        // Goes off bottom: Pin to bottom
-        newY = positionY + canvasHeight;
-        transformY = '-100%';
-      }
-
-      tooltipEl.style.left = newX + 'px';
-      tooltipEl.style.top = newY + 'px';
-      tooltipEl.style.transform = `translate(${transformX}, ${transformY})`;
-
-
-
-      tooltipEl.style.opacity = '1';
-      tooltipEl.style.padding = tooltip.options.padding + 'px ' + tooltip.options.padding + 'px';
-    }
-  }, [
-    debouncedTheme, // for colors
-    tooltipBgColor,
-    titleColor,
-    gridColor,
-    tickColor,
-    xAxisKey,
-    fullDataForDetails,
-    isTooltipEnabled
-  ]);
-
-  // Wrap the handler with throttle. (50ms is a good balance)
-  const throttledExternalTooltipHandler = useThrottle(externalTooltipHandler, 50);
-
-  // Define chart options, including zoom, tooltip, annotations, axes
-  const options: ChartOptions<"line"> = useMemo(() => {
-
-    let xMinFound = Infinity;
-    let xMaxFound = -Infinity;
-    let hasData = false;
-
-    datasets.forEach(dataset => {
-      if (dataset.data && dataset.data.length > 0) {
-        // Check first point for min
-        // Data is already {x, y} points from the worker
-        const firstPoint = dataset.data[0];
-        if (firstPoint && typeof firstPoint === 'object' && firstPoint.x !== null && typeof firstPoint.x === 'number') {
-          if (firstPoint.x < xMinFound) xMinFound = firstPoint.x;
-          hasData = true;
-        }
-
-        // Check last point for max
-        const lastPoint = dataset.data[dataset.data.length - 1];
-        if (lastPoint && typeof lastPoint === 'object' && lastPoint.x !== null && typeof lastPoint.x === 'number') {
-          if (lastPoint.x > xMaxFound) xMaxFound = lastPoint.x;
-          hasData = true;
-        }
-      }
-    });
-
-    const xMin = hasData ? xMinFound : undefined;
-    const xMax = hasData ? xMaxFound : undefined;
-
-    return {
-      maintainAspectRatio: false,
-      responsive: true,
-      animation: false,
-      parsing: false,
-      normalized: true,
-      spanGaps: false,
-      interaction: {
-        mode: isTooltipEnabled ? 'index' : undefined,
-        intersect: isTooltipEnabled ? false : undefined,
-      },
-      scales: {
-        x: {
-          max: chartZoom.xMax ?? xMax,
-          min: chartZoom.xMin ?? xMin,
-          type: 'linear',
-          position: 'bottom',
-          title: {
-            display: true,
-            text: xAxisKey === "TIMESTAMP" ? "Time (s)" : "Distance",
-            color: titleColor,
-            align: 'center',
-          },
-          grid: {
-            color: gridColor,
-            drawOnChartArea: true,
-          },
-          ticks: {
-            color: tickColor,
-            maxRotation: 0,
-            autoSkip: true,
-            autoSkipPadding: 30,
-            callback: function (value) {
-              if (typeof value === 'number') {
-                return value.toFixed(1);
-              }
-              return value;
-            }
-          },
-        },
-        ...(yAxesConfig.left && {
-          yLeft: {
-            id: 'yLeft',
-            type: 'linear',
-            position: 'left',
-            min: 0,
-            max: yLeftMax,
-            title: { display: true, text: 'Value', color: titleColor },
-            grid: { color: gridColor, drawOnChartArea: true },
-            ticks: { color: tickColor },
-          },
-        }),
-        ...(yAxesConfig.right && {
-          yRight: {
-            id: 'yRight',
-            type: 'linear',
-            position: 'right',
-            title: { display: true, text: 'Percentage (%)', color: titleColor },
-            min: 0,
-            max: 100,
-            grid: { drawOnChartArea: false },
-            ticks: { color: tickColor },
-          },
-        }),
-        ...(yAxesConfig.ram && {
-          yRam: {
-            id: 'yRam',
-            type: 'linear',
-            position: 'right',
-            min: 0,
-            max: yRamMax,
-            title: { display: true, text: 'RAM / VRAM (MB)', color: titleColor },
-            grid: { drawOnChartArea: false },
-            ticks: { color: tickColor },
-          },
-        }),
-      },
-      plugins: {
-        legend: {
-          display: false,
-          position: 'bottom',
-          labels: {
-            color: tickColor,
-            usePointStyle: true,
-            boxWidth: 10,
-            padding: 20,
-          },
-        },
-        tooltip: {
-          enabled: false, // Disable the default internal tooltip
-          mode: 'index', // Keep mode and intersect for hover behavior
-          intersect: false,
-          position: 'average', // Helps determine positioning
-          external: throttledExternalTooltipHandler, // <-- USE THE THROTTLED FUNCTION
-        },
-        zoom: {
-          limits: {
-            x: { min: xMin, max: xMax },
-            yLeft: { min: 0, max: yLeftMax },
-            yRight: { min: 0, max: 100 },
-            yRam: { min: 0, max: yRamMax },
-          },
-          pan: {
-            enabled: true,
-            mode: 'x',
-            threshold: 5,
-          },
-          zoom: {
-            wheel: {
-              enabled: true,
-            },
-            pinch: {
-              enabled: true,
-            },
-            mode: 'x',
-          },
-          onZoomComplete: ({ chart }: { chart: ChartJS }) => {
-            setChartZoom({
-              xMin: chart.scales.x.min,
-              xMax: chart.scales.x.max,
-            });
-          },
-          onPanComplete: ({ chart }: { chart: ChartJS }) => {
-            setChartZoom({
-              xMin: chart.scales.x.min,
-              xMax: chart.scales.x.max,
-            });
-          },
-        },
-        annotation: {
-          annotations: [...eventAnnotations, ...burstAnnotations],
-        },
-      },
-      onClick: (event, elements: InteractionItem[], chart: ChartJS) => {
-        if (!chart || elements.length === 0) {
-          const canvas = chart.canvas;
-          const rect = canvas.getBoundingClientRect();
-          const xPixel = event.x! - rect.left;
-          const xScale = chart.scales['x'] as Scale | undefined;
-          if (!xScale) return;
-
-          const clickedXValue = xScale.getValueForPixel(xPixel);
-
-          if (clickedXValue === undefined || clickedXValue === null || isNaN(clickedXValue)) {
-            onPointClick(null);
-            return;
-          }
-
-          const sortedXValues = fullDataForDetails.map(d => d[xAxisKey] as number).filter(v => typeof v === 'number');
-          const closestDataIndex = findClosestDataIndexBinarySearch(sortedXValues, clickedXValue);
-          const targetX = sortedXValues[closestDataIndex];
-          const fullDataPoint = fullDataForDetails.find(d => (d[xAxisKey] as number) === targetX);
-
-          if (fullDataPoint) {
-            onPointClick(fullDataPoint);
-          } else {
-            onPointClick(null);
-          }
-
-        } else {
-          const firstElement = elements[0];
-          const index = firstElement.index;
-          const clickedXValue = chart.data.labels ? chart.data.labels[index] as number : undefined;
-
-          if (clickedXValue === undefined || clickedXValue === null || isNaN(clickedXValue)) {
-            onPointClick(null);
-            return;
-          }
-
-          const sortedXValues = fullDataForDetails.map(d => d[xAxisKey] as number).filter(v => typeof v === 'number');
-          const closestDataIndex = findClosestDataIndexBinarySearch(sortedXValues, clickedXValue);
-          const targetX = sortedXValues[closestDataIndex];
-          const fullDataPoint = fullDataForDetails.find(d => (d[xAxisKey] as number) === targetX);
-
-          if (fullDataPoint) {
-            onPointClick(fullDataPoint);
-          } else {
-            onPointClick(null);
-          }
-        }
-      },
-    };
-  }, [
-    xAxisKey,
-    yAxesConfig,
-    yRamMax,
-    yLeftMax,
-    eventAnnotations,
-    burstAnnotations,
-    onPointClick,
-    fullDataForDetails,
-    debouncedTheme,
-    labels,
-    isTooltipEnabled,
-    throttledExternalTooltipHandler,
-    chartZoom, // <-- ADDED
-    setChartZoom // <-- ADDED
-  ]);
-
-  useEffect(() => {
-    const chart = chartRef.current;
-    if (!chart) return;
-
-    let needsUpdate = false;
-    chart.data.datasets.forEach((dataset, index) => {
-      const label = dataset.label;
-      if (label) {
-        const shouldBeHidden = hiddenDatasetLabels.has(label);
-        const isCurrentlyHidden = !chart.isDatasetVisible(index);
-
-        if (shouldBeHidden && !isCurrentlyHidden) {
-          chart.hide(index);
-          needsUpdate = true;
-        } else if (!shouldBeHidden && isCurrentlyHidden) {
-          chart.show(index);
-          needsUpdate = true;
-        }
-      }
-    });
-
-    if (needsUpdate) {
-      chart.update(); // Apply changes
-    }
-
-  }, [hiddenDatasetLabels, datasets]);
-
-  return (
-    <div style={{ height: `${chartHeight}px`, width: "100%", position: 'relative' }} id="chartjs-container"> {/* Add position relative */}
-      <Line key={xAxisKey + datasets.length} ref={chartRef} options={options} data={chartData} />
-    </div>
-  );
-});
+    return (
+      <div
+        style={{
+          height: `${chartHeight}px`,
+          width: "100%",
+          position: "relative",
+        }}
+        id="chartjs-container"
+      >
+        <Line
+          key={xAxisKey + datasets.length}
+          ref={chartRef}
+          options={options}
+          data={chartData}
+        />
+      </div>
+    );
+  },
+);

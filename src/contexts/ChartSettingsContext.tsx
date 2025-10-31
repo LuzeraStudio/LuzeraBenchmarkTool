@@ -1,4 +1,3 @@
-// src/contexts/ChartSettingsContext.tsx
 import { createContext, useState, useContext, useMemo, type ReactNode, useCallback } from "react";
 import type { ChartAxisKey } from "@/types/benchmark";
 
@@ -19,7 +18,7 @@ interface ChartSettings {
   selectedSessionIds: Set<string>;
   isInitialSessionLoadDone: boolean;
   chartHeight: number;
-  isTooltipEnabled: boolean; // <-- ADDED
+  isTooltipEnabled: boolean;
   chartZoom: ChartZoomState;
 }
 
@@ -30,7 +29,7 @@ interface ChartSettingsContextType extends ChartSettings {
   setSelectedSessionIds: (sessionIds: Set<string>) => void;
   setIsInitialSessionLoadDone: (done: boolean) => void;
   setChartHeight: (height: number | ((prevHeight: number) => number)) => void;
-  setIsTooltipEnabled: (enabled: boolean) => void; // <-- ADDED
+  setIsTooltipEnabled: (enabled: boolean) => void;
   setChartZoom: (zoom: ChartZoomState) => void;
 }
 
@@ -41,14 +40,12 @@ const defaultSettings: ChartSettings = {
   selectedSessionIds: new Set<string>(),
   isInitialSessionLoadDone: false,
   chartHeight: DEFAULT_CHART_HEIGHT,
-  isTooltipEnabled: true, // <-- ADDED
+  isTooltipEnabled: true,
   chartZoom: { xMin: null, xMax: null },
 };
 
-// Create the context with a default value (will be overridden by Provider)
 const ChartSettingsContext = createContext<ChartSettingsContextType | undefined>(undefined);
 
-// Create the Provider component
 export const ChartSettingsProvider = ({ children }: { children: ReactNode }) => {
   const [selectedMap, setSelectedMap] = useState<string>(defaultSettings.selectedMap);
   const [selectedMetrics, setSelectedMetrics] = useState<Set<string>>(defaultSettings.selectedMetrics);
@@ -56,8 +53,8 @@ export const ChartSettingsProvider = ({ children }: { children: ReactNode }) => 
   const [selectedSessionIds, setSelectedSessionIds] = useState<Set<string>>(defaultSettings.selectedSessionIds);
   const [isInitialSessionLoadDone, setIsInitialSessionLoadDone] = useState<boolean>(defaultSettings.isInitialSessionLoadDone);
   const [chartHeight, setChartHeight] = useState<number>(defaultSettings.chartHeight);
-  const [isTooltipEnabled, setIsTooltipEnabled] = useState<boolean>(defaultSettings.isTooltipEnabled); // <-- ADDED
-  const [chartZoom, setChartZoom] = useState<ChartZoomState>(defaultSettings.chartZoom); // <-- ADDED
+  const [isTooltipEnabled, setIsTooltipEnabled] = useState<boolean>(defaultSettings.isTooltipEnabled);
+  const [chartZoom, setChartZoom] = useState<ChartZoomState>(defaultSettings.chartZoom);
 
   const updateChartHeight = useCallback((newHeightOrFn: number | ((prevHeight: number) => number)) => {
     setChartHeight(prev => {
@@ -74,7 +71,7 @@ export const ChartSettingsProvider = ({ children }: { children: ReactNode }) => 
     selectedSessionIds,
     isInitialSessionLoadDone,
     chartHeight,
-    isTooltipEnabled, // <-- ADDED
+    isTooltipEnabled,
     chartZoom,
     setSelectedMap,
     setSelectedMetrics,
@@ -82,9 +79,9 @@ export const ChartSettingsProvider = ({ children }: { children: ReactNode }) => 
     setSelectedSessionIds,
     setIsInitialSessionLoadDone,
     setChartHeight: updateChartHeight,
-    setIsTooltipEnabled, // <-- ADDED
+    setIsTooltipEnabled,
     setChartZoom,
-  }), [selectedMap, selectedMetrics, xAxisKey, selectedSessionIds, isInitialSessionLoadDone, chartHeight, isTooltipEnabled, chartZoom]); // <-- ADDED DEPENDENCY
+  }), [selectedMap, selectedMetrics, xAxisKey, selectedSessionIds, isInitialSessionLoadDone, chartHeight, isTooltipEnabled, chartZoom]);
 
   return (
     <ChartSettingsContext.Provider value={value}>
@@ -93,7 +90,6 @@ export const ChartSettingsProvider = ({ children }: { children: ReactNode }) => 
   );
 };
 
-// Create the custom hook for easy consumption
 export const useChartSettings = (): ChartSettingsContextType => {
   const context = useContext(ChartSettingsContext);
   if (context === undefined) {

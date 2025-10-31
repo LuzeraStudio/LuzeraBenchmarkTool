@@ -37,7 +37,6 @@ export interface BenchmarkSession {
   maps: Record<string, BenchmarkRun[]>; // Key is map name
 }
 
-// --- Chart Configuration Types ---
 
 export type ChartAxisKey = "SPLINE.DISTANCE" | "TIMESTAMP";
 

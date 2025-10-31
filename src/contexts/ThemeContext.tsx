@@ -35,7 +35,7 @@ export function ThemeProvider({
 
     root.classList.remove("light", "dark");
 
-    let systemTheme: Theme = 'light'; // Default if media query not supported
+    let systemTheme: Theme = 'light';
      if (window.matchMedia) {
         systemTheme = window.matchMedia("(prefers-color-scheme: dark)").matches
           ? "dark"
