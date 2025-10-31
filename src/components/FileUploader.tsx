@@ -39,7 +39,7 @@ export const FileUploader = ({ variant = "default" }: FileUploaderProps) => {
       >
         <input {...getInputProps()} webkitdirectory="" />
         <Folder className="h-4 w-4 mr-2" />
-        {isLoading ? "Loading..." : "New Session"}
+        {isLoading ? "Loading..." : "New Session(s)"}
       </Button>
     );
   }
@@ -61,16 +61,16 @@ export const FileUploader = ({ variant = "default" }: FileUploaderProps) => {
         {isLoading
           ? "Processing..."
           : isDragActive
-            ? "Drop the folder here"
-            : "Drag & drop benchmark folder"}
+            ? "Drop the folder(s) here"
+            : "Drag & drop benchmark folder(s)"}
       </h3>
       <p className="mt-1 text-sm text-muted-foreground">
         {isLoading
           ? "Please wait while data is parsed."
-          : "Upload a folder containing your .csv files (StaticData, PerformanceLog, Events)"}
+          : "Upload one or more folders, each containing .csv files (StaticData, PerformanceLog, Events)"}
       </p>
       <Button type="button" className="mt-4" disabled={isLoading}>
-        Or click to select a folder
+        Or click to select folder(s)
       </Button>
     </div>
   );

@@ -28,57 +28,89 @@ export const BenchmarkDataProvider = ({
   const loadDataFromFiles = (files: File[]) => {
     setIsLoading(true);
 
-    const worker = new Worker(
-      new URL("../workers/parser.worker.ts", import.meta.url),
-      { type: "module" },
-    );
+    // 1. Group files by their root session folder
+    const filesBySession = new Map<string, File[]>();
 
-    const sessionId = Date.now().toString();
-    let sessionName = `Session ${sessionId.slice(-4)}`; // Fallback name
-
-    if (files.length > 0 && files[0].webkitRelativePath) {
-      const pathParts = files[0].webkitRelativePath.split("/");
-      if (pathParts.length > 1 && pathParts[0] !== "") {
-        sessionName = pathParts[0];
+    for (const file of files) {
+      let sessionName = "Unknown Session"; // Default for files without a path
+      if (file.webkitRelativePath) {
+        const pathParts = file.webkitRelativePath.split("/");
+        if (pathParts.length > 1 && pathParts[0] !== "") {
+          sessionName = pathParts[0]; // The root folder name
+        }
       }
+
+      if (!filesBySession.has(sessionName)) {
+        filesBySession.set(sessionName, []);
+      }
+      filesBySession.get(sessionName)!.push(file);
     }
 
-    worker.onmessage = (e) => {
-      const { benchmarkSession, filesProcessedCount, errors } = e.data;
+    // 2. Process each group as a separate session
+    const totalSessions = filesBySession.size;
+    let sessionsProcessed = 0;
 
-      setSessions((prevSessions) => [...prevSessions, benchmarkSession]);
-      setIsLoading(false);
-
-      if (errors.length > 0) {
-        errors.forEach((err: { file: string; error: string }) => {
-          toast({
-            variant: "destructive",
-            title: `Error parsing ${err.file}`,
-            description: err.error,
-          });
-        });
-      }
-
-      toast({
-        title: "Processing Complete",
-        description: `Finished processing ${filesProcessedCount} relevant file(s) for ${benchmarkSession.sessionName}.`,
-      });
-
-      worker.terminate();
-    };
-
-    worker.onerror = (e) => {
-      console.error("Worker error:", e);
+    if (totalSessions === 0) {
       setIsLoading(false);
       toast({
         variant: "destructive",
-        title: "Parsing Failed",
-        description: "An unexpected error occurred during file processing.",
+        title: "No files found",
+        description: "Please drop one or more valid benchmark folders.",
       });
-      worker.terminate();
-    };
+      return;
+    }
 
-    worker.postMessage({ files, sessionId, sessionName });
+    for (const [sessionName, sessionFiles] of filesBySession.entries()) {
+      const worker = new Worker(
+        new URL("../workers/parser.worker.ts", import.meta.url),
+        { type: "module" },
+      );
+
+      const sessionId = `${Date.now()}-${sessionName}`;
+
+      worker.onmessage = (e) => {
+        const { benchmarkSession, filesProcessedCount, errors } = e.data;
+
+        setSessions((prevSessions) => [...prevSessions, benchmarkSession]);
+
+        if (errors.length > 0) {
+          errors.forEach((err: { file: string; error: string }) => {
+            toast({
+              variant: "destructive",
+              title: `Error in ${sessionName}: ${err.file}`,
+              description: err.error,
+            });
+          });
+        }
+
+        toast({
+          title: `Session "${sessionName}" Processed`,
+          description: `Finished processing ${filesProcessedCount} relevant file(s).`,
+        });
+
+        worker.terminate();
+        sessionsProcessed++;
+        if (sessionsProcessed === totalSessions) {
+          setIsLoading(false);
+        }
+      };
+
+      worker.onerror = (e) => {
+        console.error("Worker error:", e);
+        toast({
+          variant: "destructive",
+          title: `Parsing Failed for "${sessionName}"`,
+          description: "An unexpected error occurred during file processing.",
+        });
+        worker.terminate();
+        sessionsProcessed++;
+        if (sessionsProcessed === totalSessions) {
+          setIsLoading(false);
+        }
+      };
+
+      worker.postMessage({ files: sessionFiles, sessionId, sessionName });
+    }
   };
 
   const clearData = () => {
