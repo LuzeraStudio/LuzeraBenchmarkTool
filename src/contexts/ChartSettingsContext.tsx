@@ -101,5 +101,5 @@ export const useChartSettings = (): ChartSettingsContextType => {
 export {
   MIN_CHART_HEIGHT,
   MAX_CHART_HEIGHT,
-  HEIGHT_STEP
+  HEIGHT_STEP, type ChartSettingsContextType
 };

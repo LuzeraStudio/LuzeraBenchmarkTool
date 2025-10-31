@@ -367,13 +367,13 @@ const Documentation = () => {
                 <code>-preferIntel</code>: Use first GPU from specified vendor.
               </li>
             </ul>
-            <p>
+            <span>
               <h3 className="font-bold">Example</h3>
               <code>
                 C:\MyGame\MyGame.exe -benchmarking -quality=2 -graphicsAdapter=0
                 -opendirectory
               </code>
-            </p>
+            </span>
             <p>
               Starts benchmark on High quality using the primary GPU and opens
               the folder afterwards.

@@ -130,9 +130,11 @@ self.onmessage = (e: MessageEvent<ProcessChartDataMessage>) => {
           }
         });
 
-        if (baseEntry['BURST_LOGGING_STATUS'] !== undefined) {
-          mergedEntry[`${baseRunPrefix}:BURST_LOGGING_STATUS`] = baseEntry['BURST_LOGGING_STATUS'];
-        }
+        mergedEntry[`${baseRunPrefix}:TIMESTAMP`] = baseEntry.TIMESTAMP;
+        mergedEntry[`${baseRunPrefix}:SPLINE.DISTANCE`] =
+          baseEntry["SPLINE.DISTANCE"];
+        mergedEntry[`${baseRunPrefix}:BURST_LOGGING_STATUS`] =
+          baseEntry["BURST_LOGGING_STATUS"];
 
         const baseValue = baseEntry[xAxisKey] as number;
         if (isNaN(baseValue)) return;
@@ -146,7 +148,7 @@ self.onmessage = (e: MessageEvent<ProcessChartDataMessage>) => {
             return; // Skip this run, will result in `null` for this point
           }
 
-const closestIndex = findClosestIndexBinary(
+          const closestIndex = findClosestIndexBinary(
             otherRun.performanceLogs,
             baseValue,
             (entry) => (entry[xAxisKey] as number) ?? 0,
@@ -227,4 +229,4 @@ const closestIndex = findClosestIndexBinary(
   }
 };
 
-export {};
+export { };

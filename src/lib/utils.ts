@@ -5,6 +5,22 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+export const formatStatValue = (value: any): string => {
+  if (typeof value === "number") {
+    if (value % 1 === 0) {
+      // It's an integer
+      return value.toString();
+    } else {
+      // It's a float
+      return value.toFixed(2);
+    }
+  }
+  if (value === true) return "True";
+  if (value === false) return "False";
+  if (value !== null && value !== undefined) return String(value);
+  return "N/A";
+};
+
 /**
  * Finds the index of the item in a sorted array whose numeric value
  * (extracted by an accessor) is closest to the target value.
