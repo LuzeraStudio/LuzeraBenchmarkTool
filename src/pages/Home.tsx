@@ -1,19 +1,39 @@
-import { useMemo, useEffect } from "react";
+import { useMemo, useEffect, useCallback } from "react";
 import { FileUploader } from "@/components/FileUploader";
 import { SystemInfo } from "@/components/SystemInfo";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useBenchmarkData } from "@/contexts/BenchmarkContext";
 import { ChartController } from "@/components/ChartController";
-import { File } from "lucide-react";
+import { File, UploadCloud } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
 import type { BenchmarkRun } from "@/types/benchmark";
 import { useChartSettings } from "@/contexts/ChartSettingsContext";
+import { useDropzone } from "react-dropzone";
+import { cn } from "@/lib/utils"
 
 const Home = () => {
-    const { sessions, isLoading } = useBenchmarkData();
+    const { sessions, isLoading, loadDataFromFiles } = useBenchmarkData();
     const { selectedMap, setSelectedMap } = useChartSettings();
+
+    const onDrop = useCallback(
+        (acceptedFiles: File[]) => {
+            if (!isLoading) {
+                loadDataFromFiles(acceptedFiles);
+            }
+        },
+        [isLoading, loadDataFromFiles],
+    );
+
+    const { getRootProps, getInputProps, isDragActive, open } = useDropzone({
+        onDrop,
+        accept: {
+            "text/csv": [".csv"],
+        },
+        disabled: isLoading,
+        noClick: true, // We will control the click action manually via the `open` function
+    });
 
     const mapNames = useMemo(() => {
         const mapSet = new Set<string>();
@@ -48,7 +68,9 @@ const Home = () => {
     const hasData = sessions.length > 0;
 
     return (
-        <div className="min-h-screen bg-background">
+        <div {...getRootProps()} className="min-h-screen bg-background relative outline-none">
+            {/* This input is hidden but required for the dropzone to work */}
+            <input {...getInputProps()} webkitdirectory="" />
             <header className="border-b border-border bg-card sticky top-0 z-50">
                 <div className="container mx-auto px-4 py-4 flex items-center justify-between">
                     <div className="flex items-center gap-3">
@@ -69,7 +91,7 @@ const Home = () => {
                                 <File /> Docs
                             </Button>
                         </Link>
-                        {hasData && <FileUploader variant="compact" />}
+                        {hasData && <FileUploader variant="compact" onBrowseClick={open} disabled={isLoading} />}
                         <ThemeToggle />
                     </div>
                 </div>
@@ -86,7 +108,7 @@ const Home = () => {
                             </div>
                         )}
                         <div className="max-w-2xl mx-auto mt-20">
-                            <FileUploader />
+                            <FileUploader onBrowseClick={open} disabled={isLoading} />
                         </div>
                     </>
                 ) : (
@@ -114,8 +136,8 @@ const Home = () => {
                                             key={selectedMap}
                                             runs={currentMapRuns}
                                             mapNames={mapNames}
-                                            // selectedMap={selectedMap}
-                                            // onMapChange={setSelectedMap}
+                                        // selectedMap={selectedMap}
+                                        // onMapChange={setSelectedMap}
                                         />
                                     ) : (
                                         <p className="text-center text-muted-foreground italic py-8">
@@ -130,6 +152,14 @@ const Home = () => {
                             </Tabs>
                         </div>
                     </>
+                )}
+                {isDragActive && (
+                    <div className="absolute inset-0 bg-primary/20 backdrop-blur-sm z-[100] flex flex-col items-center justify-center pointer-events-none">
+                        <UploadCloud className="h-24 w-24 text-primary animate-pulse" />
+                        <p className="text-2xl font-semibold text-primary mt-4">
+                            Drop folder(s) to process
+                        </p>
+                    </div>
                 )}
             </main>
         </div>

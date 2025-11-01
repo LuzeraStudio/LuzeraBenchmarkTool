@@ -1,75 +1,57 @@
-import { useCallback } from "react";
-import { useDropzone } from "react-dropzone";
 import { UploadCloud, Folder } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "./ui/button";
-import { useBenchmarkData } from "@/contexts/BenchmarkContext";
 
 interface FileUploaderProps {
   variant?: "default" | "compact";
+  onBrowseClick: () => void;
+  disabled?: boolean;
 }
 
-export const FileUploader = ({ variant = "default" }: FileUploaderProps) => {
-  const { loadDataFromFiles, isLoading } = useBenchmarkData();
-
-  const onDrop = useCallback(
-    (acceptedFiles: File[]) => {
-      if (!isLoading) {
-        loadDataFromFiles(acceptedFiles);
-      }
-    },
-    [isLoading, loadDataFromFiles],
-  );
-
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
-    accept: {
-      "text/csv": [".csv"],
-    },
-    disabled: isLoading,
-  });
+export const FileUploader = ({
+  variant = "default",
+  onBrowseClick,
+  disabled = false,
+}: FileUploaderProps) => {
 
   if (variant === "compact") {
     return (
       <Button
-        {...getRootProps()}
         variant="outline"
-        disabled={isLoading}
+        disabled={disabled}
         className="text-sm"
+        onClick={onBrowseClick}
       >
-        <input {...getInputProps()} webkitdirectory="" />
         <Folder className="h-4 w-4 mr-2" />
-        {isLoading ? "Loading..." : "New Session(s)"}
+        {disabled ? "Loading..." : "New Session(s)"}
       </Button>
     );
   }
 
   return (
     <div
-      {...getRootProps()}
       className={cn(
-        "border-2 border-dashed border-border rounded-lg p-12 text-center cursor-pointer transition-colors",
-        isDragActive
-          ? "border-primary bg-primary/10"
-          : "hover:border-primary/50",
-        isLoading ? "cursor-not-allowed opacity-50" : "",
+        "border-2 border-dashed border-border rounded-lg p-12 text-center",
+        disabled ? "opacity-50" : "",
       )}
     >
-      <input {...getInputProps()} webkitdirectory="" />
       <UploadCloud className="mx-auto h-12 w-12 text-muted-foreground" />
       <h3 className="mt-4 text-lg font-semibold">
-        {isLoading
+        {disabled
           ? "Processing..."
-          : isDragActive
-            ? "Drop the folder(s) here"
-            : "Drag & drop benchmark folder(s)"}
+          : "Drag & drop folder(s) anywhere"}
       </h3>
       <p className="mt-1 text-sm text-muted-foreground">
-        {isLoading
+        {disabled
           ? "Please wait while data is parsed."
-          : "Upload one or more folders, each containing .csv files (StaticData, PerformanceLog, Events)"}
+          : "Upload one or more folders containing your .csv files"}
       </p>
-      <Button type="button" className="mt-4" disabled={isLoading}>
+      <Button
+        type="button"
+        className="mt-4"
+        disabled={disabled}
+        onClick={onBrowseClick}
+      >
         Or click to select folder(s)
       </Button>
     </div>
