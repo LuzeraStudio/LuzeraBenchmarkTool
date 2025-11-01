@@ -4,7 +4,7 @@ import { SystemInfo } from "@/components/SystemInfo";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useBenchmarkData } from "@/contexts/BenchmarkContext";
 import { ChartController } from "@/components/ChartController";
-import { File, UploadCloud } from "lucide-react";
+import { File, UploadCloud, Github } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
@@ -86,12 +86,17 @@ const Home = () => {
                             to="/documentation"
                             className="flex items-center gap-3 hover:opacity-80 transition-opacity"
                         >
-                            <Button>
+                            <Button className="cursor-pointer">
                                 <File /> Docs
                             </Button>
                         </Link>
                         {hasData && <FileUploader variant="compact" onBrowseClick={open} disabled={isLoading} />}
                         <ThemeToggle />
+                        <Button asChild variant="outline" size="icon">
+                            <a href="https://github.com/LuzeraStudio/LuzeraBenchmarkTool" target="_blank" rel="noopener noreferrer" aria-label="GitHub Repository">
+                                <Github className="h-[1.2rem] w-[1.2rem]" />
+                            </a>
+                        </Button>
                     </div>
                 </div>
             </header>

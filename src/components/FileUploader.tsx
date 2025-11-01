@@ -23,7 +23,7 @@ export const FileUploader = ({
         onClick={onBrowseClick}
       >
         <Folder className="h-4 w-4 mr-2" />
-        {disabled ? "Loading..." : "New Session(s)"}
+        {disabled ? "Loading..." : "New Session"}
       </Button>
     );
   }
@@ -44,7 +44,7 @@ export const FileUploader = ({
       <p className="mt-1 text-sm text-muted-foreground">
         {disabled
           ? "Please wait while data is parsed."
-          : "Upload one or more folders containing your .csv files"}
+          : "Drop one or more folders containing your .csv files"}
       </p>
       <Button
         type="button"

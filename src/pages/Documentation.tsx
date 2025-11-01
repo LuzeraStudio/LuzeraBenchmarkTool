@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { BookText, Gauge } from "lucide-react";
+import { BookText, Gauge, Github } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
@@ -90,6 +90,11 @@ const Documentation = () => {
               </Button>
             </Link>
             <ThemeToggle />
+            <Button asChild variant="outline" size="icon">
+              <a href="https://github.com/LuzeraStudio/LuzeraBenchmarkTool" target="_blank" rel="noopener noreferrer" aria-label="GitHub Repository">
+                <Github className="h-[1.2rem] w-[1.2rem]" />
+              </a>
+            </Button>
           </div>
         </div>
       </header>
