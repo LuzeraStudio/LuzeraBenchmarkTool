@@ -61,6 +61,23 @@ export const BenchmarkDataProvider = ({
     }
 
     for (const [sessionName, sessionFiles] of filesBySession.entries()) {
+
+      // Check if a session with this name already exists in the current state
+      if (sessions.some((s) => s.sessionName === sessionName)) {
+        toast({
+          variant: "default",
+          title: "Session Skipped",
+          description: `A session named "${sessionName}" is already loaded.`,
+        });
+
+        // We must increment the processed count and continue to the next iteration
+        sessionsProcessed++;
+        if (sessionsProcessed === totalSessions) {
+          setIsLoading(false);
+        }
+        continue; // Skip this folder
+      }
+
       const worker = new Worker(
         new URL("../workers/parser.worker.ts", import.meta.url),
         { type: "module" },
