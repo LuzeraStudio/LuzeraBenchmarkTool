@@ -11,7 +11,6 @@ import { Link } from "react-router-dom";
 import type { BenchmarkRun } from "@/types/benchmark";
 import { useChartSettings } from "@/contexts/ChartSettingsContext";
 import { useDropzone } from "react-dropzone";
-import { cn } from "@/lib/utils"
 
 const Home = () => {
     const { sessions, isLoading, loadDataFromFiles } = useBenchmarkData();

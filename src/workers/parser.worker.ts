@@ -1,5 +1,3 @@
-// src/workers/parser.worker.ts
-
 /// <reference lib="webworker" />
 import Papa from "papaparse";
 import type {
